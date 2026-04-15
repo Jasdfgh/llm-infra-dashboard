@@ -1,0 +1,116 @@
+{
+  "projects": [
+    {
+      "id": "vllm",
+      "type": "dual_platform",
+      "nv_repo": "vllm-project/vllm",
+      "amd_repo": null,
+      "category": "inference",
+      "description": "High-throughput and memory-efficient inference and serving engine for LLMs",
+      "priority": 1
+    },
+    {
+      "id": "sglang",
+      "type": "dual_platform",
+      "nv_repo": "sgl-project/sglang",
+      "amd_repo": null,
+      "category": "inference",
+      "description": "Structured generation language for fast and flexible LLM inference",
+      "priority": 1
+    },
+    {
+      "id": "deepspeed",
+      "type": "dual_platform",
+      "nv_repo": "deepspeedai/DeepSpeed",
+      "amd_repo": null,
+      "category": "training",
+      "description": "Distributed training and inference library for large-scale models",
+      "priority": 1
+    },
+    {
+      "id": "megatron",
+      "type": "dual_platform",
+      "nv_repo": "NVIDIA/Megatron-LM",
+      "amd_repo": null,
+      "category": "training",
+      "description": "NVIDIA's large transformer model training framework",
+      "priority": 2
+    },
+    {
+      "id": "verl",
+      "type": "dual_platform",
+      "nv_repo": "verl-project/verl",
+      "amd_repo": null,
+      "category": "training",
+      "description": "RLHF training framework for large language models",
+      "priority": 2
+    },
+    {
+      "id": "torchtune",
+      "type": "dual_platform",
+      "nv_repo": "pytorch/torchtune",
+      "amd_repo": null,
+      "category": "training",
+      "description": "PyTorch native library for LLM fine-tuning",
+      "priority": 2
+    },
+    {
+      "id": "triton",
+      "type": "dual_platform",
+      "nv_repo": "triton-lang/triton",
+      "amd_repo": null,
+      "category": "tool",
+      "description": "OpenAI Triton language and compiler for custom GPU kernels",
+      "priority": 1
+    },
+    {
+      "id": "transformers",
+      "type": "dual_platform",
+      "nv_repo": "huggingface/transformers",
+      "amd_repo": null,
+      "category": "tool",
+      "description": "HuggingFace state-of-the-art NLP library for transformers",
+      "priority": 1
+    },
+    {
+      "id": "diffusers",
+      "type": "dual_platform",
+      "nv_repo": "huggingface/diffusers",
+      "amd_repo": null,
+      "category": "tool",
+      "description": "HuggingFace library for diffusion models and image generation",
+      "priority": 2
+    },
+    {
+      "id": "comfyui",
+      "type": "dual_platform",
+      "nv_repo": "comfyanonymous/ComfyUI",
+      "amd_repo": null,
+      "category": "tool",
+      "description": "Node-based UI for Stable Diffusion and image generation workflows",
+      "priority": 2
+    },
+    {
+      "id": "flashinfer_vs_aiter",
+      "type": "nv_amd_pair",
+      "nv_repo": "flashinfer-ai/flashinfer",
+      "nv_name": "FlashInfer",
+      "amd_repo": "ROCm/aiter",
+      "amd_name": "AITER",
+      "category": "inference",
+      "description": "Attention batched kernel libraries for LLM inference",
+      "priority": 1
+    },
+    {
+      "id": "cutlass_vs_ck",
+      "type": "nv_amd_pair",
+      "nv_repo": "NVIDIA/cutlass",
+      "nv_name": "CUTLASS",
+      "amd_repo": "ROCm/composable_kernel",
+      "amd_name": "Composable Kernel",
+      "category": "tool",
+      "description": "GPU kernel template libraries for linear algebra",
+      "priority": 1
+    }
+  ]
+}

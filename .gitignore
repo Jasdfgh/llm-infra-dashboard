@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.env
+*.egg-info/
+dist/
+build/
+.venv/
+data/github_metrics/
+data/analysis/
+.ipynb_checkpoints/
+streamlit.log
