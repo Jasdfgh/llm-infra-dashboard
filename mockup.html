@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM Infra Gap Dashboard — UI Mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0e17;
+  --bg-card: #111827;
+  --bg-card-hover: #1a2235;
+  --bg-surface: #0d1321;
+  --border: #1e293b;
+  --border-active: #334155;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --accent: #3b82f6;
+  --green: #22c55e;
+  --green-bg: rgba(34,197,94,0.12);
+  --yellow: #eab308;
+  --yellow-bg: rgba(234,179,8,0.12);
+  --orange: #f97316;
+  --orange-bg: rgba(249,115,22,0.12);
+  --red: #ef4444;
+  --red-bg: rgba(239,68,68,0.12);
+  --nvidia-green: #76b900;
+  --amd-red: #ed1c24;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text-primary); overflow-x:hidden; }
+
+.app { display:flex; min-height:100vh; }
+.sidebar { width:220px; background:var(--bg-surface); border-right:1px solid var(--border); padding:20px 0; flex-shrink:0; position:fixed; height:100vh; z-index:10; }
+.main { margin-left:220px; flex:1; padding:28px 32px; min-height:100vh; }
+
+.logo { padding:0 20px 24px; border-bottom:1px solid var(--border); margin-bottom:16px; }
+.logo h1 { font-size:15px; font-weight:700; color:var(--text-primary); letter-spacing:-0.3px; line-height:1.3; }
+.logo span { font-size:11px; color:var(--text-muted); font-weight:400; }
+.nav-group { padding:8px 12px; }
+.nav-group-title { font-size:10px; text-transform:uppercase; letter-spacing:1.2px; color:var(--text-muted); margin-bottom:6px; padding:0 8px; }
+.nav-item { display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:8px; cursor:pointer; font-size:13.5px; color:var(--text-secondary); transition:all 0.15s; margin-bottom:2px; user-select:none; }
+.nav-item:hover { background:var(--bg-card); color:var(--text-primary); }
+.nav-item.active { background:rgba(59,130,246,0.12); color:var(--accent); font-weight:500; }
+.nav-icon { width:18px; text-align:center; font-size:14px; }
+
+.page-header { margin-bottom:24px; }
+.page-header h2 { font-size:22px; font-weight:700; letter-spacing:-0.5px; }
+.page-header p { font-size:13px; color:var(--text-muted); margin-top:4px; }
+
+.summary-row { display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin-bottom:24px; }
+.summary-card { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:16px 18px; }
+.summary-card .label { font-size:11.5px; color:var(--text-muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px; }
+.summary-card .value { font-size:26px; font-weight:700; font-family:'JetBrains Mono',monospace; }
+.summary-card .sub { font-size:11px; color:var(--text-muted); margin-top:3px; }
+
+.filter-bar { display:flex; gap:8px; align-items:center; margin-bottom:20px; flex-wrap:wrap; }
+.filter-label { font-size:12px; color:var(--text-muted); margin-right:4px; }
+.filter-chip { padding:5px 14px; border-radius:20px; font-size:12px; border:1px solid var(--border); background:transparent; color:var(--text-secondary); cursor:pointer; transition:all 0.15s; user-select:none; }
+.filter-chip:hover { border-color:var(--border-active); color:var(--text-primary); }
+.filter-chip.active { background:rgba(59,130,246,0.15); border-color:var(--accent); color:var(--accent); }
+.hw-nv { color:var(--nvidia-green); font-weight:600; }
+.hw-amd { color:var(--amd-red); font-weight:600; }
+
+.matrix-section { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+.matrix-table { width:100%; border-collapse:collapse; }
+.matrix-table th { font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:var(--text-muted); padding:12px 14px; text-align:center; border-bottom:1px solid var(--border); font-weight:500; background:var(--bg-surface); }
+.matrix-table th:first-child { text-align:left; width:230px; }
+.matrix-table th:last-child { width:90px; }
+.matrix-table td { padding:10px 14px; text-align:center; border-bottom:1px solid rgba(30,41,59,0.5); font-size:13px; }
+.matrix-table td:first-child { text-align:left; }
+.matrix-table tr:hover td { background:var(--bg-card-hover); }
+.cat-row td { background:rgba(59,130,246,0.06)!important; padding:6px 14px!important; font-size:11px!important; text-transform:uppercase; letter-spacing:1px; color:var(--accent)!important; font-weight:600; border-bottom:1px solid var(--border)!important; }
+
+.score-cell { display:inline-flex; align-items:center; justify-content:center; min-width:56px; padding:4px 10px; border-radius:6px; font-family:'JetBrains Mono',monospace; font-size:12.5px; font-weight:600; cursor:pointer; transition:all 0.15s; }
+.score-cell:hover { transform:scale(1.08); filter:brightness(1.2); }
+.score-cell.green { background:var(--green-bg); color:var(--green); }
+.score-cell.yellow { background:var(--yellow-bg); color:var(--yellow); }
+.score-cell.orange { background:var(--orange-bg); color:var(--orange); }
+.score-cell.red { background:var(--red-bg); color:var(--red); }
+.score-cell.na { background:rgba(100,116,139,0.1); color:var(--text-muted); font-size:11px; }
+
+.proj-cell { display:flex; align-items:center; gap:10px; }
+.proj-icon { width:28px; height:28px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; background:rgba(59,130,246,0.1); color:var(--accent); flex-shrink:0; }
+.proj-info .proj-name { font-weight:600; font-size:13.5px; }
+.proj-info .proj-desc { font-size:11px; color:var(--text-muted); margin-top:1px; }
+.overall-score { font-family:'JetBrains Mono',monospace; font-size:14px; font-weight:700; }
+
+.page { display:none; }
+.page.active { display:block; }
+
+.tab-bar { display:flex; gap:2px; margin-bottom:20px; background:var(--bg-surface); border-radius:10px; padding:3px; border:1px solid var(--border); width:fit-content; }
+.tab-item { padding:7px 18px; border-radius:8px; font-size:12.5px; color:var(--text-muted); cursor:pointer; transition:all 0.15s; user-select:none; }
+.tab-item:hover { color:var(--text-secondary); }
+.tab-item.active { background:var(--bg-card); color:var(--text-primary); font-weight:500; box-shadow:0 1px 3px rgba(0,0,0,0.3); }
+
+.detail-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.detail-card { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:18px; }
+.detail-card h4 { font-size:13px; font-weight:600; margin-bottom:12px; color:var(--text-secondary); }
+
+.gap-list { display:flex; flex-direction:column; gap:8px; margin-top:16px; }
+.gap-item { display:flex; align-items:flex-start; gap:12px; padding:12px 16px; background:var(--bg-card); border:1px solid var(--border); border-radius:10px; cursor:pointer; transition:all 0.15s; }
+.gap-item:hover { border-color:var(--border-active); background:var(--bg-card-hover); }
+.gap-badge { padding:3px 8px; border-radius:4px; font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; flex-shrink:0; margin-top:2px; white-space:nowrap; }
+.gap-badge.feature { background:var(--red-bg); color:var(--red); }
+.gap-badge.perf { background:var(--orange-bg); color:var(--orange); }
+.gap-badge.model { background:var(--yellow-bg); color:var(--yellow); }
+.gap-badge.kernel { background:rgba(139,92,246,0.12); color:#a78bfa; }
+.gap-content .gap-title { font-size:13.5px; font-weight:600; }
+.gap-content .gap-meta { font-size:11.5px; color:var(--text-muted); margin-top:3px; }
+.gap-content .gap-evidence { font-size:11px; color:var(--accent); margin-top:4px; display:inline-block; text-decoration:none; }
+.gap-hw-tag { display:inline-block; padding:1px 6px; border-radius:3px; font-size:10px; background:rgba(100,116,139,0.15); color:var(--text-secondary); margin-top:4px; }
+
+.project-header { display:flex; align-items:center; gap:16px; margin-bottom:8px; }
+.proj-avatar { width:48px; height:48px; border-radius:12px; background:rgba(59,130,246,0.1); display:flex; align-items:center; justify-content:center; font-size:22px; font-weight:700; color:var(--accent); flex-shrink:0; }
+.proj-title { font-size:22px; font-weight:700; }
+.proj-repo { font-size:12.5px; color:var(--text-muted); font-family:'JetBrains Mono',monospace; }
+.stat-chips { display:flex; gap:8px; margin-top:6px; flex-wrap:wrap; }
+.stat-chip { padding:3px 10px; border-radius:12px; font-size:11px; background:var(--bg-surface); border:1px solid var(--border); color:var(--text-secondary); }
+
+.feature-table { width:100%; border-collapse:collapse; margin-top:12px; }
+.feature-table th { font-size:11px; text-transform:uppercase; letter-spacing:0.6px; color:var(--text-muted); padding:10px 12px; text-align:left; border-bottom:1px solid var(--border); font-weight:500; }
+.feature-table td { padding:10px 12px; border-bottom:1px solid rgba(30,41,59,0.4); font-size:13px; vertical-align:top; }
+.feature-table tr:hover td { background:var(--bg-card-hover); }
+.status-badge { padding:2px 8px; border-radius:4px; font-size:11px; font-weight:500; display:inline-block; }
+.status-badge.available { background:var(--green-bg); color:var(--green); }
+.status-badge.partial { background:var(--yellow-bg); color:var(--yellow); }
+.status-badge.missing { background:var(--red-bg); color:var(--red); }
+.evidence-link { color:var(--accent); font-size:11px; text-decoration:none; }
+.evidence-link:hover { text-decoration:underline; }
+
+.trend-row { display:flex; align-items:center; gap:12px; padding:8px 0; border-bottom:1px solid rgba(30,41,59,0.4); }
+.trend-row:last-child { border-bottom:none; }
+.trend-proj { width:120px; font-size:12.5px; font-weight:500; flex-shrink:0; }
+.trend-bar-container { flex:1; height:6px; background:rgba(100,116,139,0.15); border-radius:3px; overflow:hidden; }
+.trend-bar { height:100%; border-radius:3px; }
+.trend-val { width:50px; text-align:right; font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:600; flex-shrink:0; }
+.trend-change { width:55px; text-align:right; font-size:11px; flex-shrink:0; }
+.trend-change.up { color:var(--green); }
+.trend-change.down { color:var(--red); }
+.trend-change.flat { color:var(--text-muted); }
+
+.perf-card { background:var(--bg-surface); border-radius:8px; padding:14px; }
+.perf-label { font-size:11px; color:var(--text-muted); }
+.perf-num { font-family:'JetBrains Mono'; font-size:20px; font-weight:700; }
+.perf-bar { height:6px; background:rgba(100,116,139,0.15); border-radius:3px; overflow:hidden; margin-top:8px; }
+.perf-bar-fill { height:100%; border-radius:3px; }
+.perf-ratio { font-size:11px; margin-top:4px; }
+
+.change-card { padding:10px 12px; border-radius:8px; border-left:3px solid; }
+.change-card.green { background:var(--green-bg); border-color:var(--green); }
+.change-card.red { background:var(--red-bg); border-color:var(--red); }
+.change-card.yellow { background:var(--yellow-bg); border-color:var(--yellow); }
+.change-card.blue { background:rgba(59,130,246,0.08); border-color:var(--accent); }
+.change-type { font-size:12px; font-weight:600; }
+.change-desc { font-size:13px; margin-top:3px; }
+.change-meta { font-size:11px; color:var(--text-muted); margin-top:2px; }
+
+@keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+.fade-in { animation:fadeIn 0.4s ease forwards; }
+.d1 { animation-delay:0.05s; opacity:0; }
+.d2 { animation-delay:0.1s; opacity:0; }
+.d3 { animation-delay:0.15s; opacity:0; }
+::-webkit-scrollbar { width:6px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="sidebar">
+    <div class="logo">
+      <h1>LLM Infra<br>Gap Dashboard</h1>
+      <span>AMD vs NVIDIA Monitor</span>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Dashboard</div>
+      <div class="nav-item active" onclick="showPage('matrix',this)"><span class="nav-icon">&#x25A3;</span> Gap Matrix</div>
+      <div class="nav-item" onclick="showPage('detail',this)"><span class="nav-icon">&#x25C9;</span> Project Detail</div>
+      <div class="nav-item" onclick="showPage('gaps',this)"><span class="nav-icon">&#x25B3;</span> Gap Tracker</div>
+      <div class="nav-item" onclick="showPage('trends',this)"><span class="nav-icon">&#x25C6;</span> Trends</div>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">System</div>
+      <div class="nav-item"><span class="nav-icon">&#x2699;</span> Agent Control</div>
+      <div class="nav-item"><span class="nav-icon">+</span> Discovered Projects</div>
+    </div>
+    <div style="position:absolute;bottom:16px;left:0;right:0;padding:0 16px;">
+      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;">
+        <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.8px;">Last Agent Run</div>
+        <div style="font-size:12px;color:var(--green);margin-top:3px;">&#x25CF; 2h ago &mdash; 28 projects</div>
+      </div>
+    </div>
+  </nav>
+
+  <main class="main">
+    <!-- ==================== PAGE 1: Gap Matrix ==================== -->
+    <div class="page active" id="page-matrix">
+      <div class="page-header fade-in">
+        <h2>5-Dimension Gap Matrix</h2>
+        <p>AMD vs NVIDIA support comparison across LLM infrastructure projects</p>
+      </div>
+
+      <div class="summary-row fade-in d1">
+        <div class="summary-card">
+          <div class="label">Total Projects</div>
+          <div class="value" style="color:var(--accent)">28</div>
+          <div class="sub">+3 new this week</div>
+        </div>
+        <div class="summary-card">
+          <div class="label">Feature Gaps</div>
+          <div class="value" style="color:var(--red)">47</div>
+          <div class="sub">12 critical severity</div>
+        </div>
+        <div class="summary-card">
+          <div class="label">Perf Gaps Found</div>
+          <div class="value" style="color:var(--yellow)">18</div>
+          <div class="sub">with benchmark data</div>
+        </div>
+        <div class="summary-card">
+          <div class="label">Models NV-only</div>
+          <div class="value" style="color:var(--orange)">23</div>
+          <div class="sub">across all projects</div>
+        </div>
+        <div class="summary-card">
+          <div class="label">Avg Gap Score</div>
+          <div class="value" style="color:var(--green)">76%</div>
+          <div class="sub">&uarr; 3% vs last month</div>
+        </div>
+      </div>
+
+      <div class="filter-bar fade-in d2">
+        <span class="filter-label">Hardware Gen:</span>
+        <div class="filter-chip active">All</div>
+        <div class="filter-chip"><span class="hw-nv">H100</span> vs <span class="hw-amd">MI300X</span></div>
+        <div class="filter-chip"><span class="hw-nv">H200</span> vs <span class="hw-amd">MI325X</span></div>
+        <div class="filter-chip"><span class="hw-nv">B200</span> vs <span class="hw-amd">MI355X</span></div>
+        <span style="margin-left:20px" class="filter-label">Category:</span>
+        <div class="filter-chip active">All</div>
+        <div class="filter-chip">Inference</div>
+        <div class="filter-chip">Training</div>
+        <div class="filter-chip">Tool</div>
+      </div>
+
+      <div class="matrix-section fade-in d3">
+        <table class="matrix-table">
+          <thead><tr>
+            <th style="text-align:left">Project</th>
+            <th>Model<br>Support</th>
+            <th>Feature<br>Avail.</th>
+            <th>Perf<br>Parity</th>
+            <th>Kernel<br>Backend</th>
+            <th>Eng.<br>Maturity</th>
+            <th>Overall</th>
+          </tr></thead>
+          <tbody>
+            <tr class="cat-row"><td colspan="7">&#x25B8; Inference</td></tr>
+            <tr>
+              <td><div class="proj-cell"><div class="proj-icon">V</div><div class="proj-info"><div class="proj-name">vLLM</div><div class="proj-desc">High-throughput LLM serving</div></div></div></td>
+              <td><span class="score-cell green">91%</span></td>
+              <td><span class="score-cell green">85%</span></td>
+              <td><span class="score-cell green">86%</span></td>
+              <td><span class="score-cell yellow">70%</span></td>
+              <td><span class="score-cell green">80%</span></td>
+              <td><span class="overall-score" style="color:var(--green)">82%</span></td>
+            </tr>
+            <tr>
+              <td><div class="proj-cell"><div class="proj-icon">S</div><div class="proj-info"><div class="proj-name">SGLang</div><div class="proj-desc">Structured generation inference</div></div></div></td>
+              <td><span class="score-cell green">88%</span></td>
+              <td><span class="score-cell green">80%</span></td>
+              <td><span class="score-cell yellow">72%</span></td>
+              <td><span class="score-cell yellow">65%</span></td>
+              <td><span class="score-cell yellow">75%</span></td>
+              <td><span class="overall-score" style="color:var(--yellow)">76%</span></td>
+            </tr>
+            <tr>
+              <td><div class="proj-cell"><div class="proj-icon">F</div><div class="proj-info"><div class="proj-name">FlashInfer &harr; AITER</div><div class="proj-desc">Attention kernel libraries</div></div></div></td>
+              <td><span class="score-cell na">&mdash;</span></td>
+              <td><span class="score-cell yellow">68%</span></td>
+              <td><span class="score-cell yellow">72%</span></td>
+              <td><span class="score-cell orange">58%</span></td>
+              <td><span class="score-cell orange">52%</span></td>
+              <td><span class="overall-score" style="color:var(--orange)">63%</span></td>
+            </tr>
+            <tr>
+              <td><div class="proj-cell"><div class="proj-icon">T</div><div class="proj-info"><div class="proj-name">TensorRT-LLM</div><div class="proj-desc">NVIDIA inference optimization</div></div></div></td>
+              <td><span class="score-cell na">&mdash;</span></td>
+              <td><span class="score-cell red">0%</span></td>
+              <td><span class="score-cell red">0%</span></td>
+              <td><span class="score-cell red">0%</span></td>
+              <td><span class="score-cell red">0%</span></td>
+              <td><span class="overall-score" style="color:var(--red)">0%</span></td>
+            </tr>
+
+            <tr class="cat-row"><td colspan="7">&#x25B8; Training</td></tr>
+            <tr>
+              <td><div class="proj-cell"><div class="proj-icon">D</div><div class="proj-info"><div class="proj-name">DeepSpeed</div><div class="proj-desc">Distributed training library</div></div></div></td>
+              <td><span class="score-cell green">95%</span></td>
+              <td><span class="score-cell green">90%</span></td>
+              <td><span class="score-cell green">82%</span></td>
+              <td><span class="score-cell green">85%</span></td>
+              <td><span class="score-cell green">88%</span></td>
+              <td><span class="overall-score" style="color:var(--green)">88%</span></td>
+            </tr>
+            <tr>
+              <td><div class="proj-cell"><div class="proj-icon">M</div><div class="proj-info"><div class="proj-name">Megatron-LM</div><div class="proj-desc">NVIDIA training framework</div></div></div></td>
+              <td><span class="score-cell yellow">60%</span></td>
+              <td><span class="score-cell orange">48%</span></td>
+              <td><span class="score-cell na">N/A</span></td>
+              <td><span class="score-cell orange">40%</span></td>
+              <td><span class="score-cell red">25%</span></td>
+              <td><span class="overall-score" style="color:var(--orange)">43%</span></td>
+            </tr>
+            <tr>
+              <td><div class="proj-cell"><div class="proj-icon">V</div><div class="proj-info"><div class="proj-name">veRL</div><div class="proj-desc">RLHF training framework</div></div></div></td>
+              <td><span class="score-cell green">85%</span></td>
+              <td><span class="score-cell yellow">75%</span></td>
+              <td><span class="score-cell yellow">70%</span></td>
+              <td><span class="score-cell yellow">72%</span></td>
+              <td><span class="score-cell yellow">68%</span></td>
+              <td><span class="overall-score" style="color:var(--yellow)">74%</span></td>
+            </tr>
+            <tr>
+              <td><div class="proj-cell"><div class="proj-icon">T</div><div class="proj-info"><div class="proj-name">torchtune</div><div class="proj-desc">PyTorch LLM fine-tuning</div></div></div></td>
+              <td><span class="score-cell green">90%</span></td>
+              <td><span class="score-cell green">85%</span></td>
+              <td><span class="score-cell yellow">78%</span></td>
+              <td><span class="score-cell green">80%</span></td>
+              <td><span class="score-cell green">82%</span></td>
+              <td><span class="overall-score" style="color:var(--green)">83%</span></td>
+            </tr>
+
+            <tr class="cat-row"><td colspan="7">&#x25B8; Tool / Library</td></tr>
+            <tr>
+              <td><div class="proj-cell"><div class="proj-icon">T</div><div class="proj-info"><div class="proj-name">Triton</div><div class="proj-desc">GPU kernel compiler</div></div></div></td>
+              <td><span class="score-cell na">&mdash;</span></td>
+              <td><span class="score-cell green">82%</span></td>
+              <td><span class="score-cell yellow">75%</span></td>
+              <td><span class="score-cell green">80%</span></td>
+              <td><span class="score-cell green">85%</span></td>
+              <td><span class="overall-score" style="color:var(--green)">81%</span></td>
+            </tr>
+            <tr>
+              <td><div class="proj-cell"><div class="proj-icon">C</div><div class="proj-info"><div class="proj-name">CUTLASS &harr; CK</div><div class="proj-desc">GPU kernel template libraries</div></div></div></td>
+              <td><span class="score-cell na">&mdash;</span></td>
+              <td><span class="score-cell yellow">65%</span></td>
+              <td><span class="score-cell yellow">70%</span></td>
+              <td><span class="score-cell orange">55%</span></td>
+              <td><span class="score-cell orange">50%</span></td>
+              <td><span class="overall-score" style="color:var(--orange)">60%</span></td>
+            </tr>
+            <tr>
+              <td><div class="proj-cell"><div class="proj-icon">H</div><div class="proj-info"><div class="proj-name">HF Transformers</div><div class="proj-desc">Model library</div></div></div></td>
+              <td><span class="score-cell green">92%</span></td>
+              <td><span class="score-cell green">88%</span></td>
+              <td><span class="score-cell green">85%</span></td>
+              <td><span class="score-cell green">82%</span></td>
+              <td><span class="score-cell green">90%</span></td>
+              <td><span class="overall-score" style="color:var(--green)">87%</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div style="text-align:center;padding:12px;font-size:11px;color:var(--text-muted);">Click any score cell for detailed evidence &middot; Showing 11 of 28 projects</div>
+    </div>
+
+    <!-- ==================== PAGE 2: Project Detail ==================== -->
+    <div class="page" id="page-detail">
+      <div class="page-header fade-in">
+        <div class="project-header">
+          <div class="proj-avatar">V</div>
+          <div>
+            <div class="proj-title">vLLM</div>
+            <div class="proj-repo">vllm-project/vllm</div>
+            <div class="stat-chips">
+              <span class="stat-chip">&starf; 52.8k</span>
+              <span class="stat-chip">&#x1F531; 7.2k forks</span>
+              <span class="stat-chip" style="color:var(--green)">&#x25CF; ROCm CI active</span>
+              <span class="stat-chip">Overall: <strong style="color:var(--green)">82%</strong></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-bar fade-in d1">
+        <div class="tab-item active">Features</div>
+        <div class="tab-item">Models</div>
+        <div class="tab-item">Performance</div>
+        <div class="tab-item">Kernels</div>
+        <div class="tab-item">Activity</div>
+      </div>
+
+      <div class="detail-grid fade-in d2">
+        <div class="detail-card">
+          <h4>5-Dimension Radar</h4>
+          <div style="width:100%;max-width:320px;margin:0 auto;">
+            <svg viewBox="0 0 300 290">
+              <polygon points="150,28 272,112 230,248 70,248 28,112" fill="none" stroke="#1e293b" stroke-width="1"/>
+              <polygon points="150,52 246,120 212,232 88,232 54,120" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+              <polygon points="150,76 220,128 194,216 106,216 80,128" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+              <polygon points="150,100 194,136 176,200 124,200 106,136" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+              <line x1="150" y1="138" x2="150" y2="28" stroke="#1e293b" stroke-width="0.5"/>
+              <line x1="150" y1="138" x2="272" y2="112" stroke="#1e293b" stroke-width="0.5"/>
+              <line x1="150" y1="138" x2="230" y2="248" stroke="#1e293b" stroke-width="0.5"/>
+              <line x1="150" y1="138" x2="70" y2="248" stroke="#1e293b" stroke-width="0.5"/>
+              <line x1="150" y1="138" x2="28" y2="112" stroke="#1e293b" stroke-width="0.5"/>
+              <polygon points="150,39 255,117 200,237 87,237 52,119" fill="rgba(59,130,246,0.10)" stroke="#3b82f6" stroke-width="2"/>
+              <circle cx="150" cy="39" r="4" fill="#3b82f6"/><circle cx="255" cy="117" r="4" fill="#3b82f6"/>
+              <circle cx="200" cy="237" r="4" fill="#3b82f6"/><circle cx="87" cy="237" r="4" fill="#3b82f6"/>
+              <circle cx="52" cy="119" r="4" fill="#3b82f6"/>
+              <text x="150" y="18" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="DM Sans">Model 91%</text>
+              <text x="284" y="115" text-anchor="start" fill="#94a3b8" font-size="10" font-family="DM Sans">Feature 85%</text>
+              <text x="238" y="262" text-anchor="start" fill="#94a3b8" font-size="10" font-family="DM Sans">Perf 86%</text>
+              <text x="62" y="262" text-anchor="end" fill="#94a3b8" font-size="10" font-family="DM Sans">Kernel 70%</text>
+              <text x="16" y="115" text-anchor="end" fill="#94a3b8" font-size="10" font-family="DM Sans">Eng 80%</text>
+            </svg>
+          </div>
+        </div>
+        <div class="detail-card">
+          <h4>Feature Support Comparison</h4>
+          <table class="feature-table">
+            <thead><tr><th>Feature</th><th>NVIDIA</th><th>AMD</th><th>Gap</th></tr></thead>
+            <tbody>
+              <tr><td><strong>PagedAttention</strong></td><td><span class="status-badge available">Available</span></td><td><span class="status-badge available">Available</span></td><td style="color:var(--green);font-size:12px">Parity</td></tr>
+              <tr><td><strong>FlashAttention v2</strong></td><td><span class="status-badge available">Available</span></td><td><span class="status-badge available">Available</span></td><td style="color:var(--green);font-size:12px">Parity</td></tr>
+              <tr><td><strong>FP8 Quantization</strong></td><td><span class="status-badge available">Available</span></td><td><span class="status-badge available">Available</span></td><td style="color:var(--green);font-size:12px">Parity</td></tr>
+              <tr><td><strong>mxfp4 MoE Quant</strong></td><td><span class="status-badge available">Available</span></td><td><span class="status-badge missing">Missing</span></td><td><span style="font-size:11px;color:var(--red)">Feature Gap</span><br><span class="gap-hw-tag">B200 feature</span></td></tr>
+              <tr><td><strong>Disaggregated Prefill</strong></td><td><span class="status-badge available">Available</span></td><td><span class="status-badge partial">Partial</span></td><td><span style="font-size:11px;color:var(--yellow)">TP&le;4 only</span><br><a class="evidence-link" href="#">&rarr; issue #4521</a></td></tr>
+              <tr><td><strong>Gemma4 Model</strong></td><td><span class="status-badge available">Available</span></td><td><span class="status-badge missing">Missing</span></td><td><span style="font-size:11px;color:var(--red)">Model Gap</span><br><a class="evidence-link" href="#">&rarr; issue #5102</a></td></tr>
+              <tr><td><strong>torch.compile</strong></td><td><span class="status-badge available">Available</span></td><td><span class="status-badge partial">Partial</span></td><td><span style="font-size:11px;color:var(--orange)">Graph breaks</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="detail-card fade-in d3" style="margin-top:16px">
+        <h4>Performance Benchmarks &mdash; <span class="hw-nv">H100</span> vs <span class="hw-amd">MI300X</span> (same generation)</h4>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:12px;">
+          <div class="perf-card">
+            <div class="perf-label">Llama-70B TP=8 Throughput</div>
+            <div style="margin-top:8px"><span class="perf-num" style="color:var(--nvidia-green)">4,200</span> <span style="font-size:11px;color:var(--text-muted)">tok/s H100</span></div>
+            <div style="margin-top:4px"><span class="perf-num" style="color:var(--amd-red)">3,600</span> <span style="font-size:11px;color:var(--text-muted)">tok/s MI300X</span></div>
+            <div class="perf-bar"><div class="perf-bar-fill" style="width:86%;background:var(--accent);"></div></div>
+            <div class="perf-ratio" style="color:var(--yellow)">86% of H100 &middot; <a class="evidence-link" href="#">source</a></div>
+          </div>
+          <div class="perf-card">
+            <div class="perf-label">Mixtral-8x7B MoE Serving</div>
+            <div style="margin-top:8px"><span class="perf-num" style="color:var(--nvidia-green)">2,800</span> <span style="font-size:11px;color:var(--text-muted)">tok/s H100</span></div>
+            <div style="margin-top:4px"><span class="perf-num" style="color:var(--amd-red)">2,520</span> <span style="font-size:11px;color:var(--text-muted)">tok/s MI300X</span></div>
+            <div class="perf-bar"><div class="perf-bar-fill" style="width:90%;background:var(--green);"></div></div>
+            <div class="perf-ratio" style="color:var(--green)">90% of H100 &middot; <a class="evidence-link" href="#">source</a></div>
+          </div>
+          <div class="perf-card">
+            <div class="perf-label">Llama-8B TTFT (latency)</div>
+            <div style="margin-top:8px"><span class="perf-num" style="color:var(--nvidia-green)">42</span> <span style="font-size:11px;color:var(--text-muted)">ms H100</span></div>
+            <div style="margin-top:4px"><span class="perf-num" style="color:var(--amd-red)">58</span> <span style="font-size:11px;color:var(--text-muted)">ms MI300X</span></div>
+            <div class="perf-bar"><div class="perf-bar-fill" style="width:72%;background:var(--yellow);"></div></div>
+            <div class="perf-ratio" style="color:var(--yellow)">72% of H100 (lower=better) &middot; <a class="evidence-link" href="#">source</a></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== PAGE 3: Gap Tracker ==================== -->
+    <div class="page" id="page-gaps">
+      <div class="page-header fade-in">
+        <h2>Gap Tracker</h2>
+        <p>All identified gaps across projects, sorted by severity</p>
+      </div>
+
+      <div class="filter-bar fade-in d1">
+        <span class="filter-label">Type:</span>
+        <div class="filter-chip active">All</div>
+        <div class="filter-chip">Feature</div>
+        <div class="filter-chip">Performance</div>
+        <div class="filter-chip">Model</div>
+        <div class="filter-chip">Kernel</div>
+        <span style="margin-left:20px" class="filter-label">HW Gen:</span>
+        <div class="filter-chip active"><span class="hw-nv">H100</span> vs <span class="hw-amd">MI300X</span></div>
+        <div class="filter-chip"><span class="hw-nv">B200</span> vs <span class="hw-amd">MI355X</span></div>
+      </div>
+
+      <div class="gap-list fade-in d2">
+        <div class="gap-item">
+          <div class="gap-badge feature">Feature</div>
+          <div class="gap-content">
+            <div class="gap-title">mxfp4 MoE Quantization &mdash; NVIDIA only</div>
+            <div class="gap-meta"><strong>vLLM</strong> &middot; Severity: Critical &middot; Requires Blackwell mxfp4 GEMM kernel</div>
+            <div class="gap-hw-tag">B200 (Blackwell) &rarr; MI355X (CDNA4) &mdash; next-gen gap</div>
+            <br><a class="gap-evidence" href="#">&rarr; PR #8421 &middot; Issue #7930</a>
+          </div>
+        </div>
+        <div class="gap-item">
+          <div class="gap-badge model">Model</div>
+          <div class="gap-content">
+            <div class="gap-title">Gemma4 not supported on AMD</div>
+            <div class="gap-meta"><strong>SGLang</strong> &middot; Severity: High &middot; Custom CUDA kernel not ported to HIP</div>
+            <div class="gap-hw-tag">All generations &mdash; software gap</div>
+            <br><a class="gap-evidence" href="#">&rarr; Issue #3201 &middot; 42 upvotes</a>
+          </div>
+        </div>
+        <div class="gap-item">
+          <div class="gap-badge perf">Perf</div>
+          <div class="gap-content">
+            <div class="gap-title">14% throughput gap on Llama-70B serving</div>
+            <div class="gap-meta"><strong>vLLM</strong> &middot; Severity: Medium &middot; MI300X achieves 86% of H100</div>
+            <div class="gap-hw-tag">H100 vs MI300X &mdash; same-generation comparison</div>
+            <br><a class="gap-evidence" href="#">&rarr; Benchmark in Issue #6102</a>
+          </div>
+        </div>
+        <div class="gap-item">
+          <div class="gap-badge kernel">Kernel</div>
+          <div class="gap-content">
+            <div class="gap-title">CUTLASS Blackwell kernels (TMA, wgmma) &mdash; no CK equivalent</div>
+            <div class="gap-meta"><strong>CUTLASS &harr; CK</strong> &middot; Severity: High &middot; CDNA4 ISA not yet public</div>
+            <div class="gap-hw-tag">B200 (Blackwell) &rarr; MI355X (CDNA4)</div>
+            <br><a class="gap-evidence" href="#">&rarr; cutlass/include/cute/arch/copy_sm90_tma.hpp</a>
+          </div>
+        </div>
+        <div class="gap-item">
+          <div class="gap-badge feature">Feature</div>
+          <div class="gap-content">
+            <div class="gap-title">AWQ Quantization kernels missing on AMD</div>
+            <div class="gap-meta"><strong>vLLM</strong> &middot; Severity: Medium &middot; CUDA-specific AWQ dequantize kernels</div>
+            <div class="gap-hw-tag">H100 vs MI300X &mdash; same generation</div>
+            <br><a class="gap-evidence" href="#">&rarr; Issue #2891 &middot; PR #3102 (WIP)</a>
+          </div>
+        </div>
+        <div class="gap-item">
+          <div class="gap-badge model">Model</div>
+          <div class="gap-content">
+            <div class="gap-title">CogVideoX not runnable on ROCm</div>
+            <div class="gap-meta"><strong>Diffusers</strong> &middot; Severity: Medium &middot; Custom attention kernel port needed</div>
+            <div class="gap-hw-tag">All generations &mdash; software gap</div>
+            <br><a class="gap-evidence" href="#">&rarr; Issue #9012</a>
+          </div>
+        </div>
+        <div class="gap-item">
+          <div class="gap-badge perf">Perf</div>
+          <div class="gap-content">
+            <div class="gap-title">28% latency gap on Llama-8B TTFT</div>
+            <div class="gap-meta"><strong>vLLM</strong> &middot; Severity: Medium &middot; MI300X first-token latency 58ms vs H100 42ms</div>
+            <div class="gap-hw-tag">H100 vs MI300X &mdash; same-generation comparison</div>
+            <br><a class="gap-evidence" href="#">&rarr; Discussion #815</a>
+          </div>
+        </div>
+      </div>
+      <div style="text-align:center;padding:16px;font-size:11px;color:var(--text-muted);">Showing 7 of 47 gaps</div>
+    </div>
+
+    <!-- ==================== PAGE 4: Trends ==================== -->
+    <div class="page" id="page-trends">
+      <div class="page-header fade-in">
+        <h2>Trends</h2>
+        <p>AMD support gap score changes over time</p>
+      </div>
+
+      <div class="detail-grid fade-in d1">
+        <div class="detail-card">
+          <h4>Overall Gap Score (past 3 months)</h4>
+          <div style="padding:12px 0;">
+            <div class="trend-row"><span class="trend-proj">DeepSpeed</span><div class="trend-bar-container"><div class="trend-bar" style="width:88%;background:var(--green);"></div></div><span class="trend-val" style="color:var(--green)">88%</span><span class="trend-change up">&uarr; +2%</span></div>
+            <div class="trend-row"><span class="trend-proj">HF Transformers</span><div class="trend-bar-container"><div class="trend-bar" style="width:87%;background:var(--green);"></div></div><span class="trend-val" style="color:var(--green)">87%</span><span class="trend-change up">&uarr; +3%</span></div>
+            <div class="trend-row"><span class="trend-proj">torchtune</span><div class="trend-bar-container"><div class="trend-bar" style="width:83%;background:var(--green);"></div></div><span class="trend-val" style="color:var(--green)">83%</span><span class="trend-change up">&uarr; +5%</span></div>
+            <div class="trend-row"><span class="trend-proj">vLLM</span><div class="trend-bar-container"><div class="trend-bar" style="width:82%;background:var(--green);"></div></div><span class="trend-val" style="color:var(--green)">82%</span><span class="trend-change up">&uarr; +5%</span></div>
+            <div class="trend-row"><span class="trend-proj">Triton</span><div class="trend-bar-container"><div class="trend-bar" style="width:81%;background:var(--green);"></div></div><span class="trend-val" style="color:var(--green)">81%</span><span class="trend-change flat">&mdash; 0%</span></div>
+            <div class="trend-row"><span class="trend-proj">SGLang</span><div class="trend-bar-container"><div class="trend-bar" style="width:76%;background:var(--yellow);"></div></div><span class="trend-val" style="color:var(--yellow)">76%</span><span class="trend-change up">&uarr; +8%</span></div>
+            <div class="trend-row"><span class="trend-proj">veRL</span><div class="trend-bar-container"><div class="trend-bar" style="width:74%;background:var(--yellow);"></div></div><span class="trend-val" style="color:var(--yellow)">74%</span><span class="trend-change up">&uarr; +4%</span></div>
+            <div class="trend-row"><span class="trend-proj">FlashInfer/AITER</span><div class="trend-bar-container"><div class="trend-bar" style="width:63%;background:var(--orange);"></div></div><span class="trend-val" style="color:var(--orange)">63%</span><span class="trend-change up">&uarr; +12%</span></div>
+            <div class="trend-row"><span class="trend-proj">CUTLASS/CK</span><div class="trend-bar-container"><div class="trend-bar" style="width:60%;background:var(--orange);"></div></div><span class="trend-val" style="color:var(--orange)">60%</span><span class="trend-change up">&uarr; +6%</span></div>
+            <div class="trend-row"><span class="trend-proj">Megatron-LM</span><div class="trend-bar-container"><div class="trend-bar" style="width:43%;background:var(--red);"></div></div><span class="trend-val" style="color:var(--red)">43%</span><span class="trend-change down">&darr; -2%</span></div>
+          </div>
+        </div>
+
+        <div class="detail-card">
+          <h4>Recent Changes</h4>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px;">
+            <div class="change-card green">
+              <div class="change-type" style="color:var(--green)">Gap Closed</div>
+              <div class="change-desc">FlashMLA kernel ported to ROCm</div>
+              <div class="change-meta">vLLM &middot; 3 days ago &middot; <a class="evidence-link" href="#">PR #8921</a></div>
+            </div>
+            <div class="change-card green">
+              <div class="change-type" style="color:var(--green)">Gap Closed</div>
+              <div class="change-desc">Llama-4 AMD support added</div>
+              <div class="change-meta">SGLang &middot; 5 days ago &middot; <a class="evidence-link" href="#">PR #2810</a></div>
+            </div>
+            <div class="change-card red">
+              <div class="change-type" style="color:var(--red)">New Gap</div>
+              <div class="change-desc">Gemma4 launched &mdash; NVIDIA only</div>
+              <div class="change-meta">SGLang &middot; 1 week ago &middot; <a class="evidence-link" href="#">Issue #3201</a></div>
+            </div>
+            <div class="change-card red">
+              <div class="change-type" style="color:var(--red)">New Gap</div>
+              <div class="change-desc">MI300X perf regression in vLLM v0.8.2</div>
+              <div class="change-meta">vLLM &middot; 1 week ago &middot; <a class="evidence-link" href="#">Issue #8850</a></div>
+            </div>
+            <div class="change-card yellow">
+              <div class="change-type" style="color:var(--yellow)">Improving</div>
+              <div class="change-desc">AITER added 4 new attention kernels</div>
+              <div class="change-meta">AITER &middot; 2 weeks ago &middot; <a class="evidence-link" href="#">Release v0.3</a></div>
+            </div>
+            <div class="change-card blue">
+              <div class="change-type" style="color:var(--accent)">New Project</div>
+              <div class="change-desc">Agent discovered: lmdeploy (InternLM)</div>
+              <div class="change-meta">Auto-discovered &middot; 3 days ago &middot; 8.2k stars</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+function showPage(page, el) {
+  document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+  document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
+  document.getElementById('page-' + page).classList.add('active');
+  if (el) el.classList.add('active');
+}
+
+document.querySelectorAll('.filter-chip').forEach(function(chip) {
+  chip.addEventListener('click', function() {
+    var group = [this];
+    var prev = this.previousElementSibling;
+    while (prev && prev.classList.contains('filter-chip')) { group.push(prev); prev = prev.previousElementSibling; }
+    var next = this.nextElementSibling;
+    while (next && next.classList.contains('filter-chip')) { group.push(next); next = next.nextElementSibling; }
+    group.forEach(function(g) { g.classList.remove('active'); });
+    this.classList.add('active');
+  });
+});
+
+document.querySelectorAll('.score-cell').forEach(function(cell) {
+  cell.addEventListener('click', function() {
+    var self = this;
+    self.style.outline = '2px solid var(--accent)';
+    self.style.outlineOffset = '2px';
+    setTimeout(function() { self.style.outline = 'none'; }, 800);
+  });
+});
+</script>
+</body>
+</html>

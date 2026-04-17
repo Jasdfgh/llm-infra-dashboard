@@ -1,0 +1,668 @@
+project:
+  id: sglang
+  name: SGLang
+  repo: sgl-project/sglang
+  category: inference
+  expert_summary: |
+    SGLang is AMD's strongest inference framework — MI355X FP8 disagg SGLang
+    matches B200 FP8 SGLang per InferenceX v2. AMD team actively upstreams
+    [AMD]-prefixed PRs (kernel opt, AITER integration, MoRI support).
+
+    From the AMD roadmap lens, the 2026 gaps here split cleanly into:
+      FEATURES missing:
+        - Disagg for hybrid-attention models (Qwen3.5 GDA, GLM-5 DSA) — MoRI-IO
+          state transfer not implemented for Mamba/SWA/NSA families.
+        - Cross-node wide EP production readiness — MoRI-EP reaches EP8 cleanly,
+          EP16+ over IB is the NVL72 catch-up story.
+        - DWDP parallelism — CUDA has it, AMD explicitly asks when ROCm gets it.
+      BUGS in existing features:
+        - Qwen3.5-397B FP8 slower than BF16 on MI355X (flagship low-precision
+          path regression).
+        - MiniMax-M2.7 decode HSA_STATUS_ERROR_EXCEPTION on MI300X (runtime crash).
+        - FP4 + disagg + wideEP composability: DPA 0% accuracy, MTP truncation.
+        - MI325X Thor-2 NIC EP/DP decode server hangs on MoRI init.
+        - MI350X disagg throughput collapses to ~750 tok/s vs expected ~4K+.
+
+performance:
+  mi355x_sglang_fp8_disagg:
+    status: competitive_with_b200
+    confidence: high
+    notes: "MoRI SGLang ≈ Dynamo SGLang on FP8 disagg (InferenceX v2 reference)"
+  mi355x_sglang_fp4_disagg:
+    status: significant_gap
+    confidence: high
+    notes: "FP4 decent single-node, but degrades once composed with disagg + wideEP (SGLang #20404)"
+  mi300x_sglang:
+    status: functional_with_optimizations
+    confidence: high
+    notes: "MI300X works; PR #18242 gave 11% decode throughput on DeepSeek R1 via tuned FP8 GEMM shapes"
+
+known_gaps:
+
+  layer1_model:
+
+    features:
+      - id: multimodal_vlm_production_parity
+        type: feature
+        title: "Multimodal VLM Production Serving Parity on AMD"
+        gap: "Gemma 4 / Qwen-VL day-0 support on AMD is only on the TRITON_ATTN backend; AITER-optimized paths, FA3, and vision-pipeline perf are still catch-up items explicitly called out as 'planned'"
+        severity: high
+        status: active
+        discovered_at: "2026-04-02"
+        last_verified: "2026-04-16"
+        technical_detail: |
+          Multimodal models are the headline 2026 model trend — Gemma 4
+          ships with native vision+audio+video input across the 2B→31B
+          family; Qwen-VL, Llama-3.2-Vision and Pixtral ship similar
+          capabilities; DeepSeek-V3 releases include VL variants. Both
+          vLLM and SGLang claim "day-0 multimodal support" on AMD, but
+          the fine print is a real capability gap:
+
+          - AMD's own Gemma 4 launch blog states: "AMD supports vLLM with
+            the TRITON_ATTN backend, with additional optimizations planned
+            for MI300/MI350-series GPUs." TRITON_ATTN is the generic
+            cross-platform path, not the AITER-optimized 3-path routing
+            (ROCM_AITER_FA) that drives the 1.2-4.4x throughput wins on
+            text-only workloads.
+          - SGLang's new dispatch layer selects FA3 for multimodal
+            workloads (#22419). On ROCm this crashes because FA3 is
+            CUDA-only; PR #22335 merges SDPA as the short-term fallback.
+            FA2 path for multimodal through the new dispatch is still in
+            progress. So multimodal on ROCm is literally running on the
+            slowest attention path while CUDA runs on the fastest.
+          - Vision-pipeline specific work is in flight but partial:
+            PR #22428 enables ROCm MIOpen tuning for diffusion VAE;
+            PR #22422 replaces Triton rotary_emb with AITER; these are
+            necessary but not sufficient for full-stack perf parity.
+
+          Why it is a feature, not a bug: the models LOAD and PRODUCE
+          CORRECT output on AMD day-0 — that part of day-0 support is
+          real. The gap is that they run on a slower attention backend
+          and an incomplete kernel pipeline, which shows up as
+          throughput/TTFT numbers that lag NVIDIA on the same model. The
+          capability is present; the PERFORMANT capability is not.
+
+          Why AMD should care: every frontier model release in 2026 is
+          multimodal by default. If every day-0 launch is shipped on
+          TRITON_ATTN and head-to-head benchmarks publish while AITER
+          paths are "planned," the gap shows up in exactly the
+          customer-facing numbers that decide purchasing. Multimodal is
+          also where long context, image encoders, and LLMs all compose
+          — a strong AITER multimodal story would cut across several
+          other tracks on this dashboard.
+        sources:
+          - url: https://www.amd.com/en/developer/resources/technical-articles/2026/day-0-support-for-gemma-4-on-amd-processors-and-gpus.html
+            date: "2026-04-02"
+            label: "AMD — Gemma 4 day-0 blog (TRITON_ATTN only, AITER optimizations planned)"
+          - url: https://blog.vllm.ai/gemma4
+            date: "2026-04-02"
+            label: "vLLM blog — Gemma 4 launch (Docker image vllm/vllm-openai-rocm:gemma4)"
+          - url: https://github.com/sgl-project/sglang/issues/22419
+            date: "2026-03-28"
+            label: "Issue #22419 — multimodal workloads select FA3, crashes on ROCm"
+          - url: https://github.com/sgl-project/sglang/pull/22335
+            date: "2026-03-25"
+            label: "PR #22335 — SDPA fallback for multimodal on ROCm (short-term fix)"
+          - url: https://github.com/sgl-project/sglang/pull/22428
+            date: "2026-04-02"
+            label: "PR #22428 — MIOpen tuning for diffusion VAE on ROCm"
+          - url: https://github.com/sgl-project/sglang/pull/22422
+            date: "2026-04-01"
+            label: "PR #22422 — replace Triton rotary_emb with AITER (partial pipeline work)"
+        tracking_issue: https://github.com/sgl-project/sglang/issues/22419
+        trajectory: "closing — VAE/rotary work landing steadily, but full AITER multimodal attention path still 'planned', not merged"
+        updates: []
+
+      - id: hybrid_attention_disagg_viability
+        type: feature
+        title: "Disaggregated Serving for Hybrid-Attention Models (GDA / DSA / Mamba)"
+        gap: "MoRI-IO does not yet support state transfer for hybrid attention models, blocking disagg for Qwen3.5, GLM-5 and future Mamba/SWA/NSA families"
+        severity: high
+        status: active
+        discovered_at: "2026-03-20"
+        last_verified: "2026-04-16"
+        bottom_line: "Still blocked. MoRI-IO PR #14626 explicitly excludes hybrid-model state transfer; a newer effort PR #22665 added state-transfer plumbing but its coverage for GDA/DSA/Mamba is not confirmed. No AMD-side 'sample MVP functional recipe' exists for Qwen3.5 disagg, and @functionstackx's April-14 question about that remains unanswered."
+        visual:
+          type: stack
+          title: "MoRI-IO state transfer coverage — which attention types can disagg on AMD"
+          groups:
+            - name: "Standard attention (works today on AMD disagg)"
+              items:
+                - {label: "MHA (Llama family)", status: "ok",  note: "routed by MoRI-IO standard KV transfer"}
+                - {label: "MLA (DeepSeek V3/R1)", status: "ok", note: "primary benchmark path, InferenceX v2"}
+            - name: "Hybrid / sparse attention (blocked on AMD disagg)"
+              items:
+                - {label: "GDA (Qwen3.5 GatedDeltaNet)", status: "missing", note: "MoRI-IO skips hybrid state", url: "https://github.com/sgl-project/sglang/issues/21886"}
+                - {label: "DSA (GLM-5 / DeepSeek V3.2)", status: "missing", note: "same MoRI-IO limitation", url: "https://github.com/sgl-project/sglang/issues/21886"}
+                - {label: "Mamba / SWA / NSA (future)",  status: "missing", note: "explicitly excluded in PR #14626", url: "https://github.com/sgl-project/sglang/pull/14626"}
+            - name: "Possible fix path"
+              items:
+                - {label: "MoRI-IO state transfer (PR #22665)", status: "partial", note: "scope vs hybrid models unclear", url: "https://github.com/sgl-project/sglang/pull/22665"}
+          caption: "AMD disagg works perfectly for standard attention; the entire hybrid-attention class is skipped at the transport layer. Whichever PR closes the bottom stripe unlocks Qwen3.5 / GLM-5 disagg on AMD."
+        technical_detail: |
+          Hybrid-attention models are the 2026 frontier trend: Qwen3.5 uses
+          GatedDeltaNet (GDA), GLM-5/5.1 uses DeepSeek Sparse Attention (DSA),
+          DeepSeek V3.2 also uses DSA. All three run on AMD single-node
+          (standard MHA paths carry them), but none can run AMD's PD
+          disaggregated serving today.
+
+          MoRI-IO PR #14626 explicitly documents the limitation:
+            "State data transfer not implemented: Currently, MORI-IO
+             implementation does not support state data transfer for hybrid
+             models (Mamba, SWA, NSA)."
+
+          The impact is concrete: CUDA SGLang users already solved the Qwen3.5
+          disagg bugs (#19045). When a community user asked AMD for a "sample
+          MVP functional recipe" for Qwen3.5 disagg on ROCm, none was
+          available. PR #22665 (MORI-IO: state transfer, inline transfer,
+          high-concurrency fixes) is referenced as related work but it is
+          unclear whether it fully closes the hybrid-attention state transfer
+          gap.
+
+          Why it is a feature, not a bug: disagg is correctly routed on AMD
+          for standard-attention models (DeepSeek MLA, Llama family) and the
+          hybrid-attention code paths themselves work single-node. The gap is
+          that an entire disagg sub-capability — state transfer for non-standard
+          attention — has not been implemented yet in MoRI-IO. That is a missing
+          capability, not a regression or wrong-output bug.
+
+          Why AMD should care (from the roadmap lens): Multi-head latent
+          attention and sparse attention are how AMD's 288GB HBM3e capacity
+          advantage on MI355X turns into a long-context serving win. If
+          disagg is the only way to economically serve long context at scale
+          and disagg doesn't support the models that matter, the HBM
+          advantage is left unrealized.
+        sources:
+          - url: https://github.com/sgl-project/sglang/issues/21886
+            date: "2026-03-20"
+            label: "Issue #21886 — MoRI disagg doesn't support GLM-5 DSA / Qwen3.5 GDA yet"
+          - url: https://github.com/sgl-project/sglang/pull/14626
+            date: "2025-12-05"
+            label: "PR #14626 — MoRI-IO base integration (explicit exclusion of hybrid-model state transfer)"
+            state: merged
+          - url: https://github.com/sgl-project/sglang/pull/22665
+            date: "2026-04-10"
+            label: "PR #22665 — MORI-IO state transfer / inline transfer (scope vs hybrid-attention unclear)"
+          - url: https://lmsys.org/blog/2025-09-29-deepseek-V32/
+            date: "2025-09-29"
+            label: "SGLang blog — day-0 DeepSeek-V3.2 sparse attention support (single-node)"
+        tracking_issue: https://github.com/sgl-project/sglang/issues/21886
+        trajectory: "stable — documented limitation in MoRI-IO; PR #22665 may address partially but no clear timeline for GDA/DSA coverage"
+        updates:
+          - date: "2026-04-14"
+            source: agent
+            type: new_comment
+            url: https://github.com/sgl-project/sglang/issues/21886
+            summary: "@functionstackx links PR #22665 as related work that may partially address this"
+            reviewed: false
+
+    bugs:
+      - id: qwen35_fp8_slower_than_bf16_mi355x
+        type: bug
+        title: "Qwen3.5-397B FP8 Slower Than BF16 on MI355X"
+        gap: "On MI355X single-node serving, Qwen3.5-397B-FP8 is consistently slower than the BF16 checkpoint — the opposite of expected behavior on FP8-native hardware"
+        severity: high
+        status: active
+        discovered_at: "2026-03-01"
+        last_verified: "2026-04-16"
+        bottom_line: "AMD engineer @seungrokj reports fixed in image lmsysorg/sglang-rocm:v0.5.10rc0-rocm720-mi35x-20260415 and via InferenceX PR #1036. Independent re-verification on the fixed image has not yet been published; users on older images (v0.5.8.post1, v0.5.9) still see FP8 < BF16."
+        technical_detail: |
+          Issue #19633 reports that on MI355X single-node serving,
+          Qwen3.5-397B-FP8 is consistently slower than the BF16 checkpoint,
+          which is the opposite of the expected behavior for AMD's flagship
+          FP8/FP4 hardware.
+
+          Reproduction: SGLang with Triton attention backend, TP=8, image
+          rocm/sgl-dev:v0.5.8.post1-rocm720-mi35x-20260218.
+
+          AMD engineer @seungrokj acknowledged the bug and linked a fix PR
+          (#19826). On 2026-04-17, @seungrokj states the issue is fixed in
+          image lmsysorg/sglang-rocm:v0.5.10rc0-rocm720-mi35x-20260415 and
+          in SemiAnalysis InferenceX PR #1036.
+
+          Why it is a bug, not a feature gap: the FP8 path is implemented and
+          dispatched correctly; the issue is quantitative — the kernel
+          selection under the Triton backend hits a slow path for Qwen3.5
+          shapes. Users choosing the FP8 checkpoint currently get worse
+          real-world performance than BF16 until they pick up the fixed image.
+
+          Why AMD should care: Qwen3.5-397B is a headline 2026 model. The
+          entire pitch for MI355X over MI325X is FP8/FP4 native silicon. A
+          flagship model where FP8 < BF16 is the worst possible demo story.
+        sources:
+          - url: https://github.com/sgl-project/sglang/issues/19633
+            date: "2026-03-01"
+            label: "Issue #19633 — Qwen3.5 FP8 slower than BF16 on MI355X"
+          - url: https://github.com/sgl-project/sglang/pull/19826
+            date: "2026-03-05"
+            label: "PR #19826 — [AMD][Qwen3.5] AITER a8w8 GEMM configuration (the fix)"
+            state: merged
+          - url: https://github.com/SemiAnalysisAI/InferenceX/pull/1036
+            date: "2026-04-17"
+            label: "InferenceX PR #1036 — benchmark-side fix confirmation"
+        tracking_issue: https://github.com/sgl-project/sglang/issues/19633
+        trajectory: "closing — AMD reports fixed in newer image and InferenceX update, awaiting independent re-verification"
+        updates: []
+
+      - id: minimax_m27_mi300x_decode_crash
+        type: bug
+        title: "MiniMax-M2.7 Decode HSA Exception on 4× MI300X"
+        gap: "MiniMax-M2.7 crashes with HSA_STATUS_ERROR_EXCEPTION on MI300X during decode under normal inference traffic"
+        severity: high
+        status: active
+        discovered_at: "2026-04-05"
+        last_verified: "2026-04-16"
+        bottom_line: "Nightly test harness #22722 merged — so regressions will now be caught — but this is only a detection layer, not a fix. The underlying HSA_STATUS_ERROR_EXCEPTION during decode is still reproducible on 4×MI300X as of 2026-04-16, and no root-cause fix PR is linked on #22714. A customer running MiniMax-M2.7 on MI300X today will still hit the crash."
+        technical_detail: |
+          Issue #22714 reports that SGLang serving MiniMax-M2.7 on 4× MI300X
+          crashes during the decode phase with HSA_STATUS_ERROR_EXCEPTION.
+          HSA exceptions are runtime-level faults from the ROCm HSA runtime,
+          not framework-level errors — they typically indicate an illegal
+          memory access or an un-handled condition inside a GPU kernel or
+          inside ROCr.
+
+          PR #22722 (merged) adds MiniMax-M2.7 accuracy and performance
+          nightly tests on AMD as part of the debugging; it does not itself
+          fix the crash but ensures future regressions are caught.
+
+          Why it is a bug, not a feature gap: MiniMax-M2.7 is in the
+          SGLang model zoo and the model loads correctly on MI300X; the
+          crash is a dynamic failure during normal decode traffic.
+
+          Why AMD should care: MI300X is still AMD's installed-base workhorse
+          (MI355X supply is limited). A runtime-level crash on a popular
+          model under real traffic is a direct production risk for customers
+          running MI300X clusters today.
+        sources:
+          - url: https://github.com/sgl-project/sglang/issues/22714
+            date: "2026-04-05"
+            label: "Issue #22714 — MiniMax-M2.7 MI300X decode HSA exception"
+            state: open
+          - url: https://github.com/sgl-project/sglang/pull/22722
+            date: "2026-04-07"
+            label: "PR #22722 — nightly tests for MiniMax-M2.7 on AMD"
+            state: merged
+        tracking_issue: https://github.com/sgl-project/sglang/issues/22714
+        trajectory: "stable — detection layer landed (nightly tests in #22722 merged), but root-cause HSA exception fix still open; crash reproducible"
+        updates:
+          - date: "2026-04-09"
+            source: agent
+            type: pr_merged
+            url: https://github.com/sgl-project/sglang/pull/22722
+            summary: "PR #22722 merged — MiniMax-M2.7 nightly accuracy/perf tests now guard against regressions on AMD, but no root-cause fix for the decode HSA exception yet"
+            reviewed: false
+
+  layer2_serving:
+
+    features:
+      - id: cross_node_wideep_production_readiness
+        type: feature
+        title: "Cross-Node Wide Expert Parallelism (EP16 / EP32 / path to EP72)"
+        gap: "MoRI-EP reaches EP8 single-node; cross-node wideEP is bandwidth-constrained by IB vs NVLink, and lacks full nightly validation"
+        severity: high
+        status: active
+        discovered_at: "2026-03-25"
+        last_verified: "2026-04-16"
+        technical_detail: |
+          MoRI-EP is AMD's dispatch layer for expert parallelism; it matches
+          NVIDIA's DeepEP-style role. AMD claims up to 82% latency reduction
+          in MoE dispatch on MI355X (InferenceX v2 reference). Current state:
+
+          - EP8 within a single node — works well; this is where AMD's
+            MI355X FP8 disagg parity against B200 comes from.
+          - EP16+ cross-node — constrained by IB bandwidth (~50-100 GB/s)
+            vs NVLink (900 GB/s/GPU inside NVL72). InferenceX v2 shows no
+            wideEP points on the MI355X Pareto frontier.
+          - Minimum 3 nodes to even evaluate wideEP end-to-end per the ROCm
+            distributed inference docs, i.e. it is hard to reproduce outside
+            of a real cluster.
+
+          Issue #22464 (April 2026) requests "AMD Multi-Node PD Disagg
+          Nightly Regression Testing" with a proposed schedule:
+            - April 2026: first disagg accuracy test (DSR1 FP8, 1P1D, DEP8)
+            - May 2026:  expand to FP8 + FP4 × wideEP/narrowEP × MTP
+            - June 2026: more models (DSR1, Qwen3.5, GLM5)
+          CUDA side already has 48-GPU disagg nightly testing (PR #22461).
+
+          Why it is a feature, not a bug: EP8 single-node is production-ready
+          and demonstrably competitive. The gap is that cross-node extension
+          (EP16 → EP32 → the eventual EP72 on Helios) is a new capability that
+          must be built, not a broken implementation. The IB-vs-NVLink
+          bandwidth delta is a hardware fact, so the software feature being
+          tracked is "make cross-node wideEP work well despite the bandwidth
+          delta, and prove it nightly."
+
+          Why AMD should care (from the roadmap lens): this is the pre-work
+          for the 2027 rack-scale story. When MI455X / Helios ships its 72
+          UALoE-linked GPUs, AMD needs a proven wideEP stack to light up. If
+          EP16/EP32 on IB isn't made production-ready in 2026, AMD arrives at
+          Helios without a tested scale-up path. Today MoRI-EP on EP8 works;
+          every incremental PR that extends it to EP16+ and proves it in
+          nightly is directly on the roadmap critical path.
+        sources:
+          - url: https://github.com/sgl-project/sglang/issues/22464
+            date: "2026-04-04"
+            label: "Issue #22464 — AMD multi-node PD disagg nightly testing parity request"
+          - url: https://github.com/sgl-project/sglang/pull/22461
+            date: "2026-04-03"
+            label: "PR #22461 — CUDA 48-GPU disagg nightly testing (baseline to match)"
+          - url: https://rocm.docs.amd.com/en/latest/how-to/rocm-for-ai/inference/benchmark-docker/sglang-mori-distributed.html
+            date: "2026-03-15"
+            label: "ROCm docs — SGLang MoRI distributed inference setup (3 nodes min)"
+          - url: https://rocm.blogs.amd.com/software-tools-optimization/wide-ep-deepseek/README.html
+            date: "2026-02-20"
+            label: "ROCm blog — Practical wide-EP DeepSeek on MI300X"
+        tracking_issue: https://github.com/sgl-project/sglang/issues/22464
+        trajectory: "closing — April-June 2026 roadmap proposed; CUDA nightly already running; AMD parity depends on delivering each milestone"
+        updates: []
+
+      - id: eagle3_new_model_coverage_rocm
+        type: feature
+        title: "EAGLE3 Speculative Decoding Coverage for 2026 Models on ROCm"
+        gap: "EAGLE3 infrastructure works on ROCm for DeepSeek-class MTP, but NEW-model EAGLE3 drafters (Qwen3.5, GLM-5) are landing on CUDA first; no ROCm verification PR yet"
+        severity: medium
+        status: active
+        discovered_at: "2026-03-20"
+        last_verified: "2026-04-16"
+        technical_detail: |
+          Speculative decoding economics are central to the AMD FP4 story:
+          on NVIDIA's FP4 TRT-LLM stack, MTP/EAGLE3 cut cost-per-million-
+          tokens by 4x (InferenceX v2 references $0.25 → $0.06 per MTok).
+          AMD's FP4 silicon only converts into cost leadership if the
+          spec-decoding layer is at parity. Today the state is a
+          coverage-not-capability gap:
+
+          - Baseline EAGLE3 + FP8 on ROCm is functional: vLLM PR #24505
+            (Sept 2025, merged) fixed an EAGLE3 drafter kv_cache dtype
+            mismatch so the drafter inherits FP8 cache config from the
+            target on ROCm.
+          - MTP / NextN on AMD works for DeepSeek-class models: SGLang
+            PR #4631 enabled MTP on AMD GPUs showing 2x throughput on
+            DeepSeek-V3 on MI300X.
+          - AMD-side speculative decoding R&D is active: SGLang PR #19260
+            [AMD] adds suffix decoding on ROCm as a draft-model-free
+            alternative. SpecForge tutorial on ROCm docs guides users
+            through training EAGLE3 drafters via SGLang. That's a good
+            sign for the ecosystem.
+          - BUT: when NEW models drop, the EAGLE3 drafter lands on CUDA
+            first and ROCm verification lags. The canonical example is
+            SGLang PR #20255 "add EAGLE3 for Qwen3.5" (March 2026) — it
+            reports ~2x speedup on H100 but the description contains no
+            ROCm benchmark, and no follow-up [AMD] verification PR exists
+            yet. Same pattern will repeat for GLM-5, Kimi K2.5 drafters.
+
+          Why it is a feature, not a bug: the spec-decoding capability
+          exists on ROCm and works on DeepSeek; the gap is per-MODEL
+          coverage lag. Each new EAGLE3 drafter for a frontier model is
+          effectively a new feature that needs to be enabled + verified
+          on AMD.
+
+          Why AMD should care: if MI355X FP4 silicon is the cost-per-token
+          pitch, spec decoding is the multiplier. Every quarter AMD lags
+          on enabling the new EAGLE3 drafters for headline models, the
+          "cost leadership" story has an asterisk that NVIDIA's story
+          doesn't. This is the exact pattern where a small dedicated
+          AMD PR stream ([AMD]-prefixed EAGLE3-for-X follow-up PRs) would
+          close the gap inexpensively.
+        sources:
+          - url: https://github.com/sgl-project/sglang/pull/20255
+            date: "2026-03-15"
+            label: "PR #20255 — EAGLE3 for Qwen3.5 (H100 only, no ROCm verification)"
+          - url: https://github.com/sgl-project/sglang/pull/4631
+            date: "2025-05-10"
+            label: "PR #4631 — enable MTP (NextN) on AMD GPUs (2x on DeepSeek-V3)"
+          - url: https://github.com/vllm-project/vllm/pull/24505
+            date: "2025-09-20"
+            label: "PR #24505 — EAGLE3 drafter FP8 kv_cache fix on ROCm (merged)"
+          - url: https://github.com/sgl-project/sglang/pull/19260
+            date: "2026-02-10"
+            label: "PR #19260 — [AMD] suffix decoding on ROCm (alt spec decoding)"
+          - url: https://rocm.docs.amd.com/projects/ai-developer-hub/en/v8.0/notebooks/pretrain/SpecForge_SGlang.html
+            date: "2026-02-01"
+            label: "ROCm docs — SpecForge training EAGLE3 drafters on SGLang"
+          - url: https://sgl-project.github.io/advanced_features/speculative_decoding.html
+            date: "2026-03-01"
+            label: "SGLang docs — EAGLE3 373 tok/s on LLaMA 3.1 8B (baseline 158)"
+        tracking_issue: https://github.com/sgl-project/sglang/pull/20255
+        trajectory: "stable — foundations present on ROCm; per-new-model EAGLE3 enablement consistently lags CUDA by weeks"
+        updates: []
+
+      - id: dwdp_parallelism_catchup
+        type: feature
+        title: "DWDP (Data-Weight-Data Parallelism) Catch-up on ROCm"
+        gap: "DWDP is being merged on CUDA SGLang; ROCm has no implementation and AMD has explicitly asked for a timeline"
+        severity: medium
+        status: active
+        discovered_at: "2026-04-06"
+        last_verified: "2026-04-16"
+        technical_detail: |
+          DWDP is a new parallelism strategy that re-arranges the data/weight
+          layout for attention-heavy and MoE-heavy serving. TRT-LLM already
+          implements it; CUDA SGLang is about to land it via #22084.
+
+          Issue #22092 (April 2026) is an explicit question from an AMD-side
+          contributor: "How long after CUDA merges will ROCm get DWDP?"
+          There is no corresponding tracking PR on the ROCm side yet.
+
+          Why it is a feature, not a bug: DWDP is an entirely new parallelism
+          strategy; ROCm does not yet expose it at all. No broken code path,
+          just missing capability.
+
+          Why AMD should care: DWDP is exactly the kind of parallelism
+          optimization that turns raw FLOPs into realized tokens/s on MoE
+          models. If NVIDIA keeps adding parallelism strategies (DWDP, MoRI
+          equivalent, attention-aware schedulers) faster than AMD ports
+          them, the "parity on FP8 disagg" story regresses at each new
+          strategy launch. This is the canonical catch-up debt that the
+          AMD roadmap must pay down continuously.
+        sources:
+          - url: https://github.com/sgl-project/sglang/issues/22092
+            date: "2026-04-06"
+            label: "Issue #22092 — AMD asks when DWDP will be available on ROCm"
+          - url: https://github.com/sgl-project/sglang/pull/22084
+            date: "2026-04-05"
+            label: "PR #22084 — CUDA-side DWDP implementation (baseline to mirror)"
+        tracking_issue: https://github.com/sgl-project/sglang/issues/22092
+        trajectory: "stable — question open, no ROCm PR yet"
+        updates: []
+
+    bugs:
+      - id: fp4_disagg_wideep_composability
+        type: bug
+        title: "FP4 + Disagg + WideEP Composability Failure"
+        gap: "Each optimization works individually on MI355X; composed together, DPA produces 0% accuracy and MTP truncates"
+        severity: critical
+        status: active
+        discovered_at: "2026-03-10"
+        last_verified: "2026-04-16"
+        bottom_line: "Still reproducible. AMD engineer @billishyahao says the issue doesn't repro on SGLang main, but AMD's own public MI355X benchmarks are run on forked images where it does. No single upstream PR closes this — it's a composability-of-three problem (FP4 kernels × MoRI-EP × disagg orchestration) and the fork-to-main integration lag is the largest driver. Status vs last check: unchanged."
+        visual:
+          type: matrix
+          title: "MI355X 3-node DeepSeek-R1 · GSM8K accuracy by optimization combo"
+          rows:
+            - {label: "FP4 disagg"}
+            - {label: "FP8 disagg"}
+          columns:
+            - {label: "no DPA / no MTP"}
+            - {label: "+ MTP", sublabel: "speculative decoding"}
+            - {label: "+ DPA (EP8)", sublabel: "wideEP sweet spot", highlight: true}
+          cells:
+            - {row: 0, col: 0, status: "ok",     value: "94.6%", note: "FP4 disagg alone works"}
+            - {row: 0, col: 1, status: "broken", value: "0.2%",  note: "MTP truncates under FP4 disagg"}
+            - {row: 0, col: 2, status: "missing", note: "not tested in isolation"}
+            - {row: 1, col: 0, status: "ok",     value: "94.3%", note: "FP8 disagg baseline"}
+            - {row: 1, col: 1, status: "missing", note: "not tested in isolation"}
+            - {row: 1, col: 2, status: "broken", value: "0.0%",  note: "DPA=EP8 → complete accuracy collapse"}
+          footnote: "Each optimization works alone. Composed, the wideEP sweet-spot cell (FP8 disagg + DPA EP8) goes to 0% — the canonical AMD composability failure per InferenceX v2."
+        technical_detail: |
+          Tested on 3-node MI355X cluster with DeepSeek-R1 (SemiAnalysis /
+          InferenceX v2 run, reported in SGLang #20404):
+
+            - FP4 disagg WITHOUT DPA/MTP          → 94.6% GSM8K accuracy (WORKS)
+            - FP8 disagg WITHOUT DPA              → 94.3% accuracy (WORKS)
+            - FP4 disagg WITH MTP                 → 0.2% accuracy, 3.0% flexible (BROKEN)
+            - FP8 disagg WITH DPA (EP8)           → 0.0% accuracy (COMPLETELY BROKEN)
+
+          DPA (DP Attention) failure is isolated: same image, model,
+          precision, only --enable-dp-attention and --ep-size differ. DPA is
+          essential for wideEP at high batch sizes (amortizes weight loading
+          across replicas), so losing it eliminates the entire wideEP sweet
+          spot for AMD.
+
+          AMD engineer @billishyahao claims the issue doesn't reproduce on
+          SGLang main, but the reporter (@functionstackx, SemiAnalysis)
+          points out AMD publishes benchmarks on FORKED images, not upstream
+          — so a fix on main doesn't help if the forked images are what's
+          actually deployed in customer clusters.
+
+          Why it is a bug, not a feature gap: FP4 disagg and wideEP each
+          work on their own. The capabilities are present; composing them
+          produces wrong results — by definition a correctness bug.
+
+          Why AMD should care: this is the composability gap called out by
+          SemiAnalysis as AMD's #1 open technical issue vs NVIDIA. Solving
+          it closes the "~6 months behind" characterization directly.
+        sources:
+          - url: https://github.com/sgl-project/sglang/issues/20404
+            date: "2026-03-10"
+            label: "Issue #20404 — MI355X disagg DPA 0% accuracy, MTP truncation"
+          - url: https://inferencex.semianalysis.com/blog/inferencex-v2-nvidia-blackwell-vs-amd-vs-hopper
+            date: "2026-03-15"
+            label: "InferenceX v2 — composability identified as AMD's #1 gap"
+          - url: https://github.com/SemiAnalysisAI/InferenceX/actions/runs/22972314055
+            date: "2026-03-12"
+            label: "InferenceX regression run confirming the matrix above"
+        tracking_issue: https://github.com/sgl-project/sglang/issues/20404
+        trajectory: "stable — not a single-fix issue; needs systemic composability work across FP4 kernels, MoRI-EP, and upstream-vs-fork alignment"
+        updates: []
+
+      - id: mi325x_thor2_epdp_decode_hang
+        type: bug
+        title: "MI325X + Thor-2 NIC: EP/DP Decode Startup Hang on MoRI Init"
+        gap: "Decode server hangs silently at startup on MI325X clusters using Broadcom Thor-2 NICs when EP8/DP8 is enabled with --moe-a2a-backend mori"
+        severity: high
+        status: active
+        discovered_at: "2026-04-03"
+        last_verified: "2026-04-16"
+        technical_detail: |
+          Issue #22072 describes a production deployment failure on MI325X
+          clusters using Broadcom Thor-2 (bnxt_re) NICs.
+
+          Setup: DeepSeek-R1 FP8 disaggregated, 1P multiple-D,
+          --moe-a2a-backend mori.
+          Behavior: TP-only decode works. Enabling EP8/DP8 causes the decode
+          server to hang silently at startup — no logs, no progress.
+
+          Narrowed root cause: removing --moe-a2a-backend mori avoids the
+          startup hang. So the hang occurs specifically inside MoRI a2a EP
+          initialization when running on bnxt_re.
+
+          After the workaround, new failures appear during inference:
+            - Non-MTP: RDMA send queue overflow (SQ full).
+            - MTP: HSA hardware exceptions.
+          A later comment reports a working single-node EP8/DP config after
+          reducing QP parameters and concurrency, but the root cause for the
+          full intended configuration remains unresolved.
+
+          Why it is a bug: MoE a2a + MoRI is the intended dispatch path;
+          the EP/DP feature is supposed to be available. It fails on a
+          supported NIC family on a supported GPU.
+
+          Why AMD should care: Thor-2 (BXNT) is exactly one of the two NIC
+          families AMD commits to supporting in its nightly images (see
+          vLLM #38687 for the mirrored image-side story). A real deployment
+          blocker on a real NIC family carries more roadmap urgency than a
+          synthetic benchmark tuning gap.
+        sources:
+          - url: https://github.com/sgl-project/sglang/issues/22072
+            date: "2026-04-03"
+            label: "Issue #22072 — MI325X Thor-2 EP/DP decode hang"
+        tracking_issue: https://github.com/sgl-project/sglang/issues/22072
+        trajectory: "closing — workaround exists for a subset of configs, but the full EP/DP + MoRI path on bnxt_re is not robust yet"
+        updates: []
+
+      - id: mi350x_disagg_throughput_collapse
+        type: bug
+        title: "MI350X Disagg Throughput Collapse (~750 tok/s vs ~4K+ expected)"
+        gap: "Disaggregated DeepSeek R1 on MI350X produces ~750 tok/s, an order of magnitude below expectation"
+        severity: high
+        status: active
+        discovered_at: "2026-03-28"
+        last_verified: "2026-04-16"
+        technical_detail: |
+          Issue #22278 reports that a MI350X disaggregated DeepSeek R1
+          configuration delivers ~750 tok/s when the reasonable expectation
+          (based on single-node and on InferenceX-comparable configs) is
+          4,000+ tok/s. The debugging trail involved:
+            - Multiple Docker image versions (v0.5.9 works, v0.5.10 broken).
+            - Mooncake transport layer configuration.
+            - Router config (circuit breaker, serialization).
+            - Benchmarking tool parameters.
+
+          Linked related issues:
+            - #22279: aiter.dtypes AttributeError crash in MI350X Docker
+              images (v0.5.10 MI35x image has a broken aiter module).
+            - #22568: "AITER Upgrade Issues" — upgrades break things across
+              versions; a nightly-detected 2-3% accuracy drop on
+              Qwen3-235B-MXFP4 was traced to AITER commit 7b570738.
+
+          Why it is a bug, not a feature gap: the feature (disagg on MI350X
+          via MoRI) works in some image builds and breaks in others; the
+          capability exists. The failure mode is a cross-component
+          integration regression (router × AITER × MoRI × image), and it
+          costs an order of magnitude in throughput — far above noise.
+
+          Why AMD should care: if a customer lands on the wrong nightly
+          image, they see ~750 tok/s on MI350X and compare that against
+          NVIDIA B200 numbers. That comparison is effectively AMD's public
+          image on any forum where the customer posts. Version-specific
+          collapses of this magnitude damage the MI355X parity narrative
+          even when the parity run on a known-good image holds.
+        sources:
+          - url: https://github.com/sgl-project/sglang/issues/22278
+            date: "2026-03-28"
+            label: "Issue #22278 — MI350X PD disagg throughput collapse"
+          - url: https://github.com/sgl-project/sglang/issues/22279
+            date: "2026-03-28"
+            label: "Issue #22279 — aiter.dtypes AttributeError in v0.5.10 MI35x image"
+          - url: https://github.com/sgl-project/sglang/issues/22568
+            date: "2026-04-08"
+            label: "Issue #22568 — AITER upgrade causes accuracy drops across versions"
+        tracking_issue: https://github.com/sgl-project/sglang/issues/22278
+        trajectory: "recurring — each AITER / image release risks regression; nightly testing in progress but cross-version integration hardening is the real fix"
+        updates: []
+
+agent_focus:
+  priority_searches:
+    - "repo:sgl-project/sglang [AMD] is:pr merged:>2026-03-01 sort:updated"
+    - "repo:sgl-project/sglang mori OR MoRI is:pr sort:updated"
+    - "repo:sgl-project/sglang aiter is:issue is:open sort:updated"
+    - "repo:sgl-project/sglang disagg rocm OR amd is:issue sort:updated"
+    - "repo:sgl-project/sglang (DSA OR GDA OR hybrid) attention is:issue"
+    - "repo:sgl-project/sglang dwdp is:pr OR is:issue sort:updated"
+    - "repo:sgl-project/sglang thor bnxt is:issue"
+  watch_for:
+    - "MoRI-IO state transfer support for hybrid attention (GDA, DSA, Mamba)"
+    - "DPA accuracy fix in FP4/FP8 disagg mode"
+    - "DWDP parallelism ROCm PR"
+    - "AMD multi-node disagg nightly testing established"
+    - "AITER version stabilization across SGLang releases"
+  monitor_benchmarks:
+    - url: https://inferencex.semianalysis.com/?preset=mi355x-sglang-disagg-timeline
+      description: "InferenceX: MI355X SGLang disagg over time"
+    - url: https://inferencex.semianalysis.com/?preset=disagg-b200-vs-mi355x
+      description: "InferenceX: B200 vs MI355X disagg comparison"
+
+background_context:
+  descoped_l3_kernel:
+    - "FlashAttention 3 on ROCm — tracked at framework level (issue #22419), SDPA fallback merged (PR #22335)"
+    - "AITER library version stability — surface area tracked via L2-B (#22278) instead of standalone"
+    - "FP4 GEMM kernel shapes — landing incrementally in AITER / CK, not a single track"
+  descoped_l4_engineering:
+    - "Docker image version hunting — folded into MI350X throughput collapse bug (#22278 / #22279)"
+    - "Nightly CI parity CUDA vs AMD — covered by cross-node wideEP feature track (#22464)"
+    - "Forked-image-vs-upstream narrative — covered as context inside composability bug (#20404)"
+  known_nvidia_exclusive_unreachable:
+    - "NVFP4 data format — NVIDIA-proprietary; AMD uses MXFP4"
+    - "NVLink-72 rack-scale — hardware gap until MI455X / Helios (2026 samples, 2027 volume)"
+    - "TRT-LLM engine — NVIDIA-exclusive; AMD relies on vLLM + SGLang"

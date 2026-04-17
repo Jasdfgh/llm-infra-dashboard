@@ -1,0 +1,125 @@
+# Hardware Generation Mapping & Performance Baseline
+# Last updated: 2026-04-15
+# Sources: InferenceX v2 (SemiAnalysis), MLPerf 6.0, AMD/NVIDIA official blogs
+
+generations:
+  current_gen:
+    nvidia: "H100/H200 (Hopper)"
+    amd: "MI300X/MI325X (CDNA3)"
+    status: "Production mainstream, large-scale deployments"
+    performance_baseline:
+      mi300x_vs_h100: |
+        MI300X generally matches or slightly exceeds H100 on FP8 memory-bound
+        workloads due to 192GB HBM3 (2.4x) and 5.3TB/s bandwidth (1.6x).
+        For compute-bound workloads, software maturity gap limits realized perf.
+      mi325x_vs_h200: |
+        MI325X (256GB HBM3e) competes with H200 (141GB HBM3e) on memory capacity.
+        InferenceX shows MI355X is ~4x throughput over MI325X, suggesting MI325X
+        is not the competitive sweet spot.
+    key_hw_specs:
+      h100_sxm: {memory: "80GB HBM3", bandwidth: "3.35 TB/s", fp16: "989 TFLOPS"}
+      h200_sxm: {memory: "141GB HBM3e", bandwidth: "4.8 TB/s", fp16: "989 TFLOPS"}
+      mi300x: {memory: "192GB HBM3", bandwidth: "5.3 TB/s", fp16: "1307 TFLOPS"}
+      mi325x: {memory: "256GB HBM3e", bandwidth: "6.0 TB/s", fp16: "1307 TFLOPS"}
+
+  next_gen:
+    nvidia: "B200/B300 (Blackwell / Blackwell Ultra)"
+    amd: "MI355X (CDNA4)"
+    status: "Shipping 2025-2026, active benchmarking"
+    performance_baseline:
+      mi355x_vs_b200_fp8_sglang_disagg: |
+        InferenceX v2: MI355X (MoRI SGLang) is COMPETITIVE with B200 (Dynamo SGLang)
+        on FP8 disaggregated serving. In some interactivity ranges MI355X even leads.
+        Both benefit similarly from MTP.
+        Source: https://inferencex.semianalysis.com/blog/inferencex-v2-nvidia-blackwell-vs-amd-vs-hopper
+      mi355x_vs_b200_fp4_disagg_wideep: |
+        CRITICAL GAP: When composing FP4 + disagg + wideEP together, MI355X
+        performance degrades significantly. MI355X+MTP barely matches B200 without MTP.
+        Against Dynamo TRT-LLM, the gap is even larger.
+        Root cause: composability of inference optimizations, not individual kernel perf.
+      mi355x_vs_b200_trtllm: |
+        Dynamo TRT-LLM gives B200 a ~35-50% advantage over SGLang on same hardware.
+        AMD has no equivalent closed-source engine (ATOM has zero production users).
+      mi355x_generational: |
+        MI355X vs MI300X: up to 10x performance improvement (InferenceX).
+        MI355X vs MI325X: ~4x throughput, ~3x cost efficiency.
+        MLPerf 6.0: MI355X 100K tok/s single node Llama2-70B Server (3.1x over MI325X).
+    key_hw_specs:
+      b200: {memory: "192GB HBM3e", fp4: "up to 20 PFLOPS", new_features: "NVFP4, MXFP4, TMA v2"}
+      b300: {memory: "288GB HBM3e", fp4: "up to 30 PFLOPS", note: "Blackwell Ultra"}
+      mi355x: {memory: "288GB HBM3e", fp4: "up to 10 PFLOPS", process: "3nm, 185B transistors"}
+
+  rack_scale:
+    nvidia: "GB200/GB300 NVL72"
+    amd: "MI455X UALoE72 (not yet available)"
+    gap: |
+      NVIDIA NVL72 connects 72 GPUs over NVLink (900 GB/s/GPU), enabling wideEP
+      across 72 GPUs without leaving NVLink domain. This is a massive architectural
+      advantage for large MoE models like DeepSeek.
+      AMD MI455X UALoE72: engineering samples H2 2026, mass production Q2 2027.
+      Current MI355X clusters use IB for cross-node (50-100 GB/s) — 9x less bandwidth.
+
+# Software stack summary
+software:
+  nvidia_exclusive:
+    - "TensorRT-LLM (35-50% faster than vLLM on same NVIDIA HW)"
+    - "Dynamo (disagg orchestration framework)"
+    - "CUTLASS (tightly coupled to NVIDIA HW, CuTe DSL)"
+    - "NVFP4 data format (NVIDIA-proprietary)"
+    - "NVLink / NVSwitch (rack-scale interconnect)"
+  amd_exclusive:
+    - "MoRI (modular RDMA interface — disagg + EP communication)"
+    - "AITER (AI Tensor Engine for ROCm — attention/GEMM kernels)"
+    - "Composable Kernel (CK — template-based GPU kernels)"
+    - "RCCL (NCCL equivalent)"
+  shared_open_source:
+    - "vLLM (AMD is tier-1 platform but CI resources lacking)"
+    - "SGLang (competitive performance on AMD, MoRI integrated)"
+    - "Triton (cross-platform kernel compiler)"
+    - "FlashInfer (ROCm port v0.5.3, March 2026)"
+    - "PyTorch ROCm backend"
+
+# The five confirmed macro gaps (multi-source verified)
+confirmed_gaps:
+  composability:
+    severity: "critical"
+    confidence: "high"
+    sources: ["InferenceX v2", "SemiAnalysis analysis", "AMD official acknowledges FP4 as developing"]
+    description: |
+      FP4 + disaggregated serving + wide EP compose poorly on AMD.
+      Individual optimizations work, but production deployments use all three together.
+      AMD is ~6 months behind NVIDIA on distributed inference composability.
+
+  trtllm_exclusive:
+    severity: "high"
+    confidence: "high"
+    sources: ["InferenceX v2", "NVIDIA blog", "third-party benchmarks"]
+    description: |
+      TensorRT-LLM delivers 35-50% higher throughput than vLLM/SGLang on NVIDIA HW.
+      AMD has no equivalent closed-source engine. ATOM has zero production adoption.
+
+  rack_scale_interconnect:
+    severity: "high"
+    confidence: "high"
+    sources: ["InferenceX v2", "NVIDIA architecture specs", "AMD roadmap"]
+    description: |
+      NVL72 enables 72-GPU wideEP over NVLink (900 GB/s/GPU).
+      AMD equivalent (MI455X UALoE72) not available until 2027 Q2.
+      Current AMD cross-node uses IB at ~9x less bandwidth.
+
+  ci_engineering_resources:
+    severity: "high"
+    confidence: "high"
+    sources: ["vLLM maintainer RFC", "SemiAnalysis", "GitHub issues"]
+    description: |
+      Zero MI355X on vLLM CI. Need 20+ MI300X, 20+ MI325X, 20+ MI355X machines.
+      AMD lacks upstream committers/reviewers. Cannot do day-0 ROCm support.
+
+  fp8_single_node_parity:
+    severity: "resolved"
+    confidence: "high"
+    sources: ["InferenceX v2", "AMD official", "MLPerf 6.0"]
+    description: |
+      FP8 single-node and FP8 disagg SGLang on MI355X is competitive with B200.
+      This is a POSITIVE signal — AMD has achieved parity in this specific config.
+      MI355X even exceeds B200 published baseline on DeepSeek R1 FP8 8K/1K (3K vs 2.2K tok/s/GPU).

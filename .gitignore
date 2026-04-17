@@ -1,11 +1,49 @@
+# ─── Python ───────────────────────────────────────────
 __pycache__/
 *.pyc
-.env
+*.pyo
 *.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+.venv/
+venv/
+
+# ─── Node.js / Next.js ───────────────────────────────
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+.pnp.*
+.yarn/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ─── Build / distribution ───────────────────────────
 dist/
 build/
-.venv/
+
+# ─── Secrets & local config ─────────────────────────
+.env
+.env.*
+!.env.example
+
+# ─── Generated data ─────────────────────────────────
+# Local SQLite cache, old streamlit crawler output, etc.
+*.db
+*.sqlite
+*.sqlite3
+data/dashboard.db
 data/github_metrics/
 data/analysis/
-.ipynb_checkpoints/
-streamlit.log
+
+# ─── Logs ───────────────────────────────────────────
+*.log
+
+# ─── Editor / OS ─────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*~

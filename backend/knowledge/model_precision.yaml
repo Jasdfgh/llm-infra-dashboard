@@ -1,0 +1,158 @@
+# Model-Precision Binding Table
+# Source: ROCm AI-Frameworks-Dashboard METHODOLOGY.md + InferenceX + HuggingFace production deployments
+# Rule: Benchmark each model at its production serving precision, not a generic default.
+# Attention always uses BF16 (FP8 attention is experimental on both platforms).
+# Last updated: 2026-04-16
+
+models:
+  # === MoE Models (majority of hot models) ===
+  DeepSeek-R1:
+    type: "LLM-MoE"
+    production_precision: "FP8"
+    gemm: "FP8"
+    moe: "FP8"
+    attention: "BF16"
+    op_geomean_mi355x_vs_b300: 1.781  # inference-weighted
+    op_geomean_equal: 0.893
+
+  Qwen3.5-397B:
+    type: "LLM-MoE"
+    production_precision: "FP8"
+    gemm: "FP8"
+    moe: "FP8"
+    attention: "BF16"
+
+  Qwen3-235B:
+    type: "LLM-MoE"
+    production_precision: "FP8"
+    gemm: "FP8"
+    moe: "FP8"
+    attention: "BF16"
+    op_geomean_mi355x_vs_b300: 1.664
+    op_geomean_equal: 0.929
+
+  Llama4-Maverick:
+    type: "LLM-MoE"
+    production_precision: "FP8"
+    gemm: "FP8"
+    moe: "FP8"
+    attention: "BF16"
+    op_geomean_mi355x_vs_b300: 1.635
+    op_geomean_equal: 0.868
+
+  GLM-5:
+    type: "LLM-MoE"
+    production_precision: "FP8"
+    gemm: "FP8"
+    moe: "FP8"
+    attention: "BF16"
+    op_geomean_mi355x_vs_b300: 1.392
+    op_geomean_equal: 1.065
+
+  GPT-OSS-120B:
+    type: "LLM-MoE"
+    production_precision: "MXFP4"
+    gemm: "MXFP4"
+    moe: "MXFP4"
+    attention: "BF16"
+    op_geomean_mi355x_vs_b300: 1.373
+    op_geomean_equal: 0.902
+
+  Kimi-K2.5:
+    type: "LLM-MoE"
+    production_precision: "INT4"
+    gemm: "INT4"
+    moe: "INT4"
+    attention: "BF16"
+    op_geomean_mi355x_vs_b300: 1.170
+    op_geomean_equal: 0.795
+
+  Mixtral-8x7B:
+    type: "LLM-MoE"
+    production_precision: "INT4/AWQ"
+    gemm: "INT4"
+    moe: "INT4"
+    attention: "BF16"
+    op_geomean_mi355x_vs_b300: 1.379
+    op_geomean_equal: 0.926
+
+  Mixtral-8x22B:
+    type: "LLM-MoE"
+    production_precision: "INT4/AWQ"
+    gemm: "INT4"
+    moe: "INT4"
+    attention: "BF16"
+    op_geomean_mi355x_vs_b300: 1.403
+    op_geomean_equal: 0.915
+
+  MiniMax-M2.5:
+    type: "LLM-MoE"
+    production_precision: "FP8"
+    gemm: "FP8"
+    moe: "FP8"
+    attention: "BF16"
+    op_geomean_mi355x_vs_b300: 1.464
+    op_geomean_equal: 0.926
+
+  # === Dense Models ===
+  Llama3-405B:
+    type: "LLM-Dense"
+    production_precision: "FP8"
+    gemm: "FP8"
+    attention: "BF16"
+    op_geomean_mi355x_vs_b300: 0.985
+    op_geomean_equal: 0.930
+
+  Llama3-70B:
+    type: "LLM-Dense"
+    production_precision: "FP8"
+    gemm: "FP8"
+    attention: "BF16"
+    op_geomean_mi355x_vs_b300: 0.931
+    op_geomean_equal: 0.864
+
+  Llama3-8B:
+    type: "LLM-Dense"
+    production_precision: "FP8"
+    gemm: "FP8"
+    attention: "BF16"
+    op_geomean_mi355x_vs_b300: 0.889
+    op_geomean_equal: 0.837
+
+  Gemma2-27B:
+    type: "LLM-Dense"
+    production_precision: "BF16"
+    gemm: "BF16"
+    attention: "BF16"
+    op_geomean_mi355x_vs_b300: 0.927
+    op_geomean_equal: 0.860
+
+  Gemma2-9B:
+    type: "LLM-Dense"
+    production_precision: "BF16"
+    gemm: "BF16"
+    attention: "BF16"
+    op_geomean_mi355x_vs_b300: 0.869
+    op_geomean_equal: 0.825
+
+  Mistral-7B:
+    type: "LLM-Dense"
+    production_precision: "BF16"
+    gemm: "BF16"
+    attention: "BF16"
+    op_geomean_mi355x_vs_b300: 0.893
+    op_geomean_equal: 0.817
+
+  Command-R-Plus:
+    type: "LLM-Dense"
+    production_precision: "BF16"
+    gemm: "BF16"
+    attention: "BF16"
+    op_geomean_mi355x_vs_b300: 1.051
+    op_geomean_equal: 0.907
+
+# Key insight from this data:
+# - MoE models: AMD MI355X AHEAD on inference-weighted geomean (1.1-2.4x) due to AITER fused MoE advantage
+# - Dense models: NVIDIA B300 AHEAD on equal-weight geomean (0.82-0.93x) due to higher HBM bandwidth
+# - The gap direction depends on model architecture: MoE favors AMD, Dense favors NV
+# - Production precision matters: FP8 is the standard for large models, INT4 for Kimi, MXFP4 for GPT-OSS

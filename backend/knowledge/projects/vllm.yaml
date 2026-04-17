@@ -1,0 +1,402 @@
+project:
+  id: vllm
+  name: vLLM
+  repo: vllm-project/vllm
+  category: inference
+  expert_summary: |
+    vLLM is AMD's first-class inference engine on ROCm. Day-0 MI300X/MI325X/MI355X
+    support, 7 attention backends on ROCm, AITER kernels fully integrated.
+    Strategic gaps (from AMD roadmap lens):
+    (1) vLLM router still lacks MoRI integration — blocks out-of-box disagg on AMD;
+    (2) Day-0 completeness for NVIDIA-marketed models (GPT-OSS on MXFP4) —
+        MI355X still runs on a forked vLLM 0.10.1 branch per SemiAnalysis;
+    (3) Stability regressions on flagship MI355X long-context paths
+        (AITER MLA sparse kernel breaks at context > 2048).
+    FP8 single-node and FP8 disagg parity with B200 is achieved on the SGLang side;
+    vLLM on AMD is still catching up on the last-mile orchestration.
+
+# Confirmed performance context (carried from prior version, unchanged)
+performance:
+  mi355x_vs_b200_fp8_disagg_sglang:
+    status: competitive
+    confidence: high
+    notes: MI355X matches or slightly leads B200 on FP8 SGLang disagg (InferenceX v2)
+  mi355x_vs_b200_fp4_disagg_wideep:
+    status: significant_gap
+    confidence: high
+    notes: FP4 + disagg + wideEP composability is AMD's #1 open gap; ~6 months behind NVIDIA
+  trtllm_vs_vllm_sglang:
+    status: nvidia_exclusive_advantage
+    confidence: high
+    notes: TRT-LLM delivers 35-50% over vLLM on H100/B200; AMD has no closed-source equivalent
+
+# Active tracks — organized by (layer × gap_type)
+# Each track must have: type, title, gap (one-liner), severity, technical_detail,
+# sources [{url, date, label}], tracking_issue, trajectory, status, discovered_at,
+# last_verified, updates.
+known_gaps:
+
+  layer1_model:
+
+    features:
+      - id: gpt_oss_day0_completeness
+        type: feature
+        title: "GPT-OSS Day-0 Completeness on ROCm (MXFP4 path)"
+        gap: "MI355X benchmarks still run GPT-OSS on a forked vLLM 0.10.1; upstream MXFP4 enablement is incremental"
+        severity: high
+        status: active
+        discovered_at: "2026-03-20"
+        last_verified: "2026-04-16"
+        technical_detail: |
+          GPT-OSS is NVIDIA's own open-weights model, designed around MXFP4 on
+          Blackwell. AMD's MI355X has native FP4/MXFP4 hardware, so in principle
+          this model should be the flagship showcase for CDNA4. In practice:
+
+          - Upstream enablement landed via vLLM PR #39754 (enable gpt_oss_mxfp4
+            on ROCm), but only covers the basic forward path.
+          - SemiAnalysis InferenceX v2 reports that AMD's public GPT-OSS 120B
+            numbers on MI355X come from a fork of vLLM 0.10.1, not from upstream
+            main. The fork reportedly contains unmerged MXFP4 fused-MoE patches,
+            tuned AITER shapes, and router tweaks that community users cannot
+            reproduce from pip install vllm.
+          - The "day-0 support" AMD claims for GPT-OSS is therefore completeness
+            along a tight happy path (single-node, specific prompt shape) rather
+            than a full-fidelity equivalent of the NVIDIA B200 serving path
+            (disagg + wideEP + MTP).
+
+          Why it is a feature, not a bug: the upstream GPT-OSS path on ROCm
+          works for the cases it supports — it is not producing wrong output.
+          The gap is the DELTA between that upstream path and the production
+          fork AMD actually ships benchmarks against. Closing the fork-main
+          delta is feature engineering (upstreaming patches, landing MXFP4
+          fused-MoE variants, adding MI355X CI), not a one-line fix.
+
+          Why AMD should care: GPT-OSS is exactly the class of model where
+          MI355X's FP4 silicon should shine. If the upstream gap persists, AMD
+          loses the marketing story and buyers end up re-benchmarking against
+          NVIDIA's out-of-box TRT-LLM numbers.
+        sources:
+          - url: https://github.com/vllm-project/vllm/pull/39754
+            date: "2026-03-10"
+            label: "PR #39754 — enable gpt_oss_mxfp4 on ROCm (upstream baseline)"
+          - url: https://inferencex.semianalysis.com/blog/inferencex-v2-nvidia-blackwell-vs-amd-vs-hopper
+            date: "2026-03-15"
+            label: "InferenceX v2 — notes AMD GPT-OSS results come from vLLM 0.10.1 fork"
+          - url: https://blog.vllm.ai/2026/02/27/rocm-attention-backend.html
+            date: "2026-02-27"
+            label: "vLLM blog — 7 attention backends on ROCm (AITER integration state)"
+        tracking_issue: https://github.com/vllm-project/vllm/pull/39754
+        trajectory: "stable — upstream path exists but fork-vs-main delta not closing; AMD CI still lacks MI355X machines"
+        updates: []
+
+      - id: nvfp4_ecosystem_exclusion
+        type: feature
+        title: "NVFP4 Model Ecosystem Exclusion + MXFP4 Pipeline Maturity"
+        gap: "NVIDIA publishes NVFP4-quantized variants of popular models (Gemma, Llama, GPT-OSS) directly on HuggingFace; AMD users cannot use these checkpoints and must requantize via Quark, where the W4A4 PTQ pipeline is still maturing"
+        severity: high
+        status: active
+        discovered_at: "2026-03-15"
+        last_verified: "2026-04-16"
+        technical_detail: |
+          NVIDIA has built a model-weight distribution moat around NVFP4 that
+          is strategically different from a simple "kernel format" gap:
+
+          - Popular models are published PRE-QUANTIZED in NVFP4 on
+            HuggingFace. `nvidia/Gemma-4-31B-IT-NVFP4` has 291K+ downloads;
+            NVFP4 variants of Llama-3.1, GPT-OSS, and DeepSeek follow the
+            same pattern. NVIDIA users just `pip install vllm` and pull the
+            checkpoint.
+          - AMD users cannot load NVFP4 checkpoints on ROCm. The open
+            alternative is MXFP4 (OCP standard), but MXFP4 checkpoints of
+            the same models are NOT published by the model authors.
+          - AMD's workflow is therefore: take the BF16 / FP8 checkpoint,
+            run it through AMD Quark to produce MXFP4 weights, validate
+            accuracy, then serve. AMD has published its own examples such
+            as `amd/Llama-3.1-405B-Instruct-MXFP4-Preview` and
+            `amd/Llama-2-70b-chat-hf-WMXFP4-AMXFP4-KVFP8-Scale-UINT8-MLPerf-GPTQ`,
+            but coverage for the day-0 model wave is far behind NVIDIA.
+          - The Quark/MXFP4 pipeline itself has a research-grade bottleneck:
+            ICLR 2026 analysis of rotation-based PTQ methods (SmoothQuant,
+            QuaRot) shows "severe incompatibility with MXFP4" because
+            MXFP4's power-of-two block scaling conflicts with how global
+            rotations redistribute outlier energy. Most of the W4A4
+            literature built for INT4 does not transfer cleanly. AMD Quark
+            0.11.1 includes SmoothQuant and QuaRot but the accuracy
+            tradeoffs vs NVFP4 on frontier models are still being
+            characterized.
+
+          Why it is a feature, not a bug: the capability of "load a
+          checkpoint and serve in FP4" exists on AMD for MXFP4, and exists
+          on NVIDIA for NVFP4. The gap is that the MODELS AMD users can
+          immediately use are a much smaller set, and producing AMD-serving
+          MXFP4 checkpoints requires a quantization pipeline that is not
+          yet at parity with NVIDIA TRT-Model-Optimizer.
+
+          Why AMD should care: this is the 2026 model-ecosystem version of
+          the "day-0 popular model" story. If every time NVIDIA launches a
+          major model it drops with an NVFP4 variant and AMD needs a week
+          to ship an equivalent MXFP4 preview, AMD's "native FP4 silicon"
+          advantage on MI355X is blunted by a distribution gap. This is
+          exactly the class of problem where an upstream contribution push
+          (Quark + MXFP4 checkpoints + vLLM loader polish) would pay off.
+        sources:
+          - url: https://huggingface.co/nvidia/Gemma-4-31B-IT-NVFP4
+            date: "2026-04-02"
+            label: "HF — nvidia/Gemma-4-31B-IT-NVFP4 (291K+ downloads, NVIDIA-exclusive)"
+          - url: https://huggingface.co/amd/Llama-3.1-405B-Instruct-MXFP4-Preview
+            date: "2026-03-10"
+            label: "HF — amd/Llama-3.1-405B-Instruct-MXFP4-Preview (AMD's published MXFP4 path)"
+          - url: https://github.com/amd/Quark
+            date: "2026-02-15"
+            label: "AMD Quark — quantization tool producing MXFP4 (v0.11.1 adds SmoothQuant, QuaRot)"
+          - url: https://quark.docs.amd.com/latest/tutorials/torch/example_fp4.html
+            date: "2026-02-15"
+            label: "Quark FP4 tutorial — OCP MXFP4 quantization workflow"
+          - url: https://rocm.blogs.amd.com/software-tools-optimization/mxfp4-mxfp6-quantization/README.html
+            date: "2026-01-20"
+            label: "ROCm blog — High-accuracy MXFP4/MXFP6 on AMD GPUs"
+          - url: https://openreview.net/pdf?id=UAarpRAiVN
+            date: "2026-02-01"
+            label: "ICLR 2026 — rotation-based PTQ incompatibility with MXFP4"
+        tracking_issue: https://github.com/amd/Quark
+        trajectory: "stable — AMD Quark actively iterating; model-checkpoint distribution gap closes one model at a time, not systemically"
+        updates: []
+
+    bugs:
+      - id: aiter_mla_sparse_mi355x_ctx2k
+        type: bug
+        title: "AITER MLA Sparse Kernel Regression on MI355X (context > 2048)"
+        gap: "Sparse MLA backend produces incorrect outputs on MI355X for context > 2048 tokens"
+        severity: high
+        status: active
+        discovered_at: "2026-04-02"
+        last_verified: "2026-04-16"
+        technical_detail: |
+          vLLM issue #39303 reports that the ROCM_AITER_MLA_SPARSE attention
+          backend — one of the six AMD-only backends in vLLM's v1 registry —
+          produces incorrect outputs on MI355X when the prompt context exceeds
+          2048 tokens. The backend is the intended path for DeepSeek-V3.2 style
+          DeepSeek Sparse Attention (DSA) and for the upcoming GLM-5 DSA variant.
+
+          Why it is categorized as a bug, not a feature gap: the feature
+          (sparse MLA on ROCm) has been enabled via PR #39168 "Expanded sparse
+          MLA support" and is routed by the v1 backend registry; short context
+          serving works. The failure mode is therefore a correctness regression
+          in the fused AITER kernel path, not a missing capability.
+
+          Why AMD should care: long-context serving on MI355X is one of the few
+          places where AMD's 288GB HBM3e capacity directly beats B200 (192GB).
+          A correctness regression above 2k context gives users the exact
+          opposite of what the MI355X hardware advantage is supposed to deliver,
+          and it lands on the flagship chip, not legacy MI300X.
+        sources:
+          - url: https://github.com/vllm-project/vllm/issues/39303
+            date: "2026-04-02"
+            label: "Issue #39303 — AITER MLA sparse context>2048 regression on MI355X"
+          - url: https://github.com/vllm-project/vllm/pull/39168
+            date: "2026-03-18"
+            label: "PR #39168 — expanded sparse MLA support (gfx942 baseline)"
+          - url: https://docs.vllm.ai/en/v0.18.0/api/v1/attention/backends/mla/rocm_aiter_mla_sparse/
+            date: "2026-03-25"
+            label: "vLLM docs — rocm_aiter_mla_sparse backend reference"
+        tracking_issue: https://github.com/vllm-project/vllm/issues/39303
+        trajectory: "stable — bug acknowledged, AITER team investigating, no fix PR linked yet"
+        updates: []
+
+  layer2_serving:
+
+    features:
+      - id: vllm_router_mori_integration
+        type: feature
+        title: "vLLM Router × MoRI Integration (incl. NIC-ready nightly images)"
+        gap: "vLLM's router supports NIXL (NVIDIA) but not MoRI (AMD); ROCm images also ship without Pollara / Thor-2 NIC drivers"
+        severity: critical
+        status: active
+        discovered_at: "2026-04-01"
+        last_verified: "2026-04-16"
+        bottom_line: "Connector in flight — PR #39565 is open with first functional benchmarks on MI300/MI350, companion router PRs #138/#114/#139 are queued. But nightly ROCm images still don't ship Pollara (gfx950) or Thor-2 (gfx942) drivers, so even after the code merges, users will still have to build images from source. AMD's @mpashkovskii (April 15) acknowledged the image request with 'I'll take a look' — no PR yet."
+        visual:
+          type: stack
+          title: "vLLM disagg stack on AMD — what's present, what's not"
+          groups:
+            - name: "vLLM Router (orchestration layer)"
+              items:
+                - {label: "NIXL connector (NVIDIA)", status: "ok",      note: "default, ships in the box"}
+                - {label: "MoRI connector (AMD)",    status: "partial", note: "PR #39565 open · 3 router PRs in flight", url: "https://github.com/vllm-project/vllm/pull/39565"}
+                - {label: "RIXL fallback",           status: "info",    note: "unofficial NIXL fork, not in Docker"}
+            - name: "NIC userspace / kernel drivers"
+              items:
+                - {label: "Pollara AINIC (gfx950)",  status: "missing", note: "not built into ROCm nightly images", url: "https://github.com/vllm-project/vllm/issues/38687"}
+                - {label: "Thor-2 BXNT (gfx942)",    status: "missing", note: "not built into ROCm nightly images", url: "https://github.com/vllm-project/vllm/issues/38687"}
+                - {label: "MoRI image-side build",   status: "partial", note: "PR #38371 referenced as path-to-fix", url: "https://github.com/vllm-project/vllm/pull/38371"}
+            - name: "Reference implementation"
+              items:
+                - {label: "SGLang MoRI (already shipping)", status: "ok", note: "PR sglang#14626 as template", url: "https://github.com/sgl-project/sglang/pull/14626"}
+          caption: "Whole stripe of router-connector + NIC-driver pieces is missing on vLLM+AMD — even if users build from source, the images don't ship the drivers. Same pattern SGLang already solved."
+        technical_detail: |
+          This is a single end-to-end integration gap split across four linked
+          work items:
+
+          1. vLLM router MoRI connector missing — Issue #38692 (April 1).
+             Router currently supports NIXL (NVIDIA KV transfer) out of the
+             box; ROCm users must fall back to RIXL (NIXL fork, not in Docker)
+             or a MORIIO toy proxy. SGLang already supports MoRI via PR
+             sglang#14626. This is the root functional gap.
+
+          2. MoRI connector PR — vLLM PR #39565 (April 11, @simondanielsson).
+             Introduces the in-process MoRI connector so vLLM workers can
+             participate in AMD disagg flows. Required for router wiring.
+
+          3. Router-side support — vllm-router PR #138, PR #114 / #139.
+             Corresponding router patches; first benchmarks from
+             @simondanielsson show functional disagg on MI300/MI350 when all
+             pieces are applied.
+
+          4. Image / NIC gap — Issue #38687. Even with code merged, ROCm
+             nightly/release images do not include Pollara AINIC (gfx950) or
+             Broadcom Thor-2 (gfx942) drivers and userspace libraries, and
+             MoRI is not built with those NIC types enabled. PR #38371 is
+             referenced as a partial fix. The reporter's proposal: two
+             nightly image lines, a default nightly with Pollara support and
+             a -bxnt nightly with Thor-2 support.
+
+          Why it is a feature, not a bug: the MoRI connector capability
+          does not exist in upstream vLLM on AMD today. SGLang ships MoRI
+          disagg; vLLM does not. The image-distribution problem
+          (missing Pollara / Thor-2 drivers in nightly images) is an
+          execution sub-task of the same feature, not a separate
+          correctness regression. Everything in this track is "build the
+          capability," not "fix something that broke."
+
+          Why AMD should care: vLLM is the single most-used open-source
+          inference engine. Every day this integration is incomplete, AMD
+          effectively forces its customers to do what @functionstackx
+          describes — "build vLLM from source, hunt for the right Docker
+          image, and hope the NIC userspace matches." That kills the AMD
+          day-0 narrative on the biggest engine. AMD engineer @mpashkovskii
+          committed to a two-step fix: (a) short-term dev image with fixed
+          router, (b) long-term harmonization of P/D discovery across KV
+          transfer backends.
+        sources:
+          - url: https://github.com/vllm-project/vllm/issues/38692
+            date: "2026-04-01"
+            label: "Issue #38692 — vLLM router has no MoRI connector (AMD disagg gap)"
+          - url: https://github.com/vllm-project/vllm/pull/39565
+            date: "2026-04-11"
+            label: "PR #39565 — MoRI connector in vLLM (first functional benchmarks on MI300/350)"
+          - url: https://github.com/vllm-project/vllm/pull/38813
+            date: "2026-04-08"
+            label: "PR #38813 — MoRI-IO connector alignment"
+          - url: https://github.com/vllm-project/vllm/issues/38687
+            date: "2026-04-01"
+            label: "Issue #38687 — ROCm images missing Pollara / Thor-2 NIC support"
+          - url: https://github.com/vllm-project/vllm/pull/38371
+            date: "2026-04-13"
+            label: "PR #38371 — referenced as partial image fix"
+          - url: https://github.com/sgl-project/sglang/pull/14626
+            date: "2025-12-10"
+            label: "SGLang PR #14626 — reference: MoRI-IO integration in SGLang, state transfer docs"
+        tracking_issue: https://github.com/vllm-project/vllm/issues/38692
+        trajectory: "closing — 3 PRs published (#39565, #38813, router #138), benchmarks functional; NIC-ready nightly image distribution still open"
+        updates:
+          - date: "2026-04-15"
+            source: agent
+            type: new_comment
+            url: https://github.com/vllm-project/vllm/issues/38692#issuecomment-latest
+            summary: "@mpashkovskii acknowledges image-building request — 'I'll take a look into image building process'"
+            reviewed: false
+
+      - id: chunked_prefill_rocm_parity
+        type: feature
+        title: "Chunked Prefill / Prefix Caching Performance Parity on ROCm"
+        gap: "vLLM official AMD best-practices explicitly recommend DISABLING chunked prefill on MI300X, while on CUDA it is the default — a concrete feature-parity gap on a core serving primitive"
+        severity: high
+        status: active
+        discovered_at: "2026-02-27"
+        last_verified: "2026-04-16"
+        technical_detail: |
+          Chunked prefill (splitting long prompts into chunks that can be
+          interleaved with decode steps) is one of the three core serving
+          primitives vLLM ships — alongside prefix caching and continuous
+          batching. On NVIDIA it is default-on and benchmarks show TTFT
+          improvements in the 20-40% range on long-prompt workloads.
+
+          On AMD MI300X, the official vLLM guidance is the opposite:
+
+          - "Disable chunked prefill in most cases for better performance"
+            (vLLM-project "Serving LLMs on AMD MI300X: Best Practices").
+          - "Combine prefix caching with chunked prefill only in specific
+            scenarios with high hit rates" — i.e. the two primitives do
+            not cleanly compose on AMD the way they do on CUDA.
+          - The recommended alternative is multi-step scheduling
+            (`--num-scheduler-steps 10-15`), which is helpful but does
+            not solve the same problem as chunked prefill (it reduces
+            Python overhead, not prefill/decode interference).
+
+          Why it is a feature, not a bug: chunked prefill works on AMD in
+          the functional sense — the code path exists and produces correct
+          output. The gap is that it is not PERFORMANT enough to be the
+          recommended configuration, which is a feature-parity issue rather
+          than a correctness regression. Rooted most likely in
+          attention-backend mixed-workload behavior on CDNA3 — the
+          ROCM_AITER_FA backend's 3-path routing (prefill/extend/decode)
+          reduces this class of interference, so improvements here interact
+          with AITER work.
+
+          Why AMD should care: prefix caching + chunked prefill is how
+          NVIDIA marketing gets their low-TTFT numbers on long-prompt
+          benchmarks (RAG, code-gen, document QA). If AMD's path requires
+          either turning the feature off or tuning it per workload, any
+          head-to-head benchmark where the CUDA side uses defaults and the
+          AMD side uses defaults puts AMD at a structural disadvantage.
+          This is a direct AITER + scheduler roadmap item.
+        sources:
+          - url: https://vllm-project.github.io/2024/10/23/vllm-serving-amd.html
+            date: "2024-10-23"
+            label: "vLLM — Serving LLMs on AMD MI300X Best Practices (disable chunked prefill recommendation)"
+          - url: https://blog.vllm.ai/2026/02/27/rocm-attention-backend.html
+            date: "2026-02-27"
+            label: "vLLM blog — 7 attention backends on ROCm (ROCM_AITER_FA 3-path routing context)"
+          - url: https://rocm.blogs.amd.com/software-tools-optimization/disaggregation/README.html
+            date: "2026-01-15"
+            label: "ROCm blog — disagg prefill/decode on MI300X (disagg as alternative answer)"
+        tracking_issue: https://blog.vllm.ai/2026/02/27/rocm-attention-backend.html
+        trajectory: "stable — framed as 'use multi-step scheduling instead'; no explicit PR/issue closing the chunked-prefill perf gap on ROCm"
+        updates: []
+
+    bugs: []
+
+# Agent focus — searches the crawl agent should prioritize
+agent_focus:
+  priority_searches:
+    - "repo:vllm-project/vllm rocm OR hip is:pr merged:>2026-03-01 sort:updated"
+    - "repo:vllm-project/vllm mori OR MoRI is:pr sort:updated"
+    - "repo:vllm-project/vllm gpt_oss OR gpt-oss mxfp4 is:pr"
+    - "repo:vllm-project/vllm mi355 OR MI355X is:issue sort:updated"
+    - "repo:vllm-project/vllm AITER MLA sparse is:issue"
+  watch_for:
+    - "MoRI connector landing in upstream vLLM (PR #39565, PR #38813)"
+    - "Nightly ROCm image with Pollara and/or Thor-2 NIC support"
+    - "GPT-OSS MXFP4 upstream vs fork delta on MI355X"
+    - "AITER MLA sparse context>2048 fix PR"
+  monitor_benchmarks:
+    - url: https://inferencex.semianalysis.com/
+      description: "InferenceX continuous benchmark — primary fork-vs-upstream reference"
+    - url: https://mlcommons.org/benchmarks/inference/
+      description: "MLPerf Inference — AMD official numbers"
+
+# Deliberately de-scoped for the MVP dashboard. Kept here as narrative context
+# so experts and the Agent remember WHY these items are not top priority right now.
+background_context:
+  descoped_l3_kernel:
+    - "fused_silu_mul_block_quant disabled on ROCm (PR #39387 FP8 fnuz vs fn) — kernel-level, tracked in AITER roadmap"
+    - "FP4 GEMM shapes landing incrementally in AITER (ROCm/aiter#2092: 493 shapes for MI355X)"
+    - "FlashAttention 3 on ROCm still not available — tracked at framework level, not here"
+  descoped_l4_engineering:
+    - "CI machine shortage: zero MI355X on vLLM CI per SemiAnalysis — infrastructure problem"
+    - "Upstream committer/reviewer shortage on AMD side — org-level, not a specific track"
+    - "AMD benchmark results on forked images that community cannot reproduce — narrative problem, tracked via L1-F1"
+  known_nvidia_exclusive_unreachable:
+    - "NVFP4 data format — NVIDIA-proprietary; AMD uses MXFP4 (OCP). Not a closeable gap."
+    - "NVLink-72 rack-scale — hardware architecture gap until MI455X / Helios (H2 2026 samples, Q2 2027 volume)."
+    - "TRT-LLM engine — NVIDIA-exclusive, 35-50% perf advantage. AMD relies on vLLM + SGLang."

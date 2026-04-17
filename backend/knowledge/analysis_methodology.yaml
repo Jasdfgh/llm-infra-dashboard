@@ -1,0 +1,202 @@
+# Gap Analysis Methodology
+# This file documents HOW to analyze AMD vs NVIDIA gaps at sufficient depth.
+# It serves as the SKILL guide for both human experts and the Agent.
+#
+# Core principle: A gap is NOT "feature X doesn't work on AMD."
+# A gap is a causal chain with evidence at each link.
+
+# ============================================================
+# ANALYSIS DEPTH STANDARD
+# ============================================================
+# Every gap entry in a project knowledge base MUST include:
+#
+# 1. WHAT exactly is broken/missing/slower
+#    - Not "DPA doesn't work" but "DPA produces 0.0% GSM8K accuracy with EP8
+#      on DeepSeek-R1 FP8 in 3-node MI355X disagg config"
+#
+# 2. WHERE the evidence comes from
+#    - Specific issue/PR number with URL
+#    - Specific eval data (benchmark numbers, accuracy scores)
+#    - CI run links if available
+#    - Multiple sources cross-referenced
+#
+# 3. WHY it happens (root cause chain)
+#    - Not "software issue" but "AMD FP8 uses f8e4m3fnuz format, kernel X
+#      asserts on QuantKey(f8e4m3fnuz,...) because op Y not enabled on ROCm"
+#
+# 4. WHO is working on it and WHEN
+#    - Specific engineer names/handles from issue comments
+#    - PRs in progress with links
+#    - Timeline if stated
+#
+# 5. WHAT IS UNCERTAIN
+#    - Explicitly flag what hasn't been verified
+#    - "AMD says fixed on main but benchmark was on fork — needs verification"
+
+# ============================================================
+# STEP-BY-STEP ANALYSIS PROCESS
+# ============================================================
+analysis_steps:
+
+  step_1_identify_from_macro:
+    description: "Start from authoritative macro-level sources, not GitHub issues"
+    actions:
+      - "Read InferenceX (https://inferencex.semianalysis.com/) for performance baselines"
+      - "Read MLPerf results for standardized benchmarks"
+      - "Read AMD/NVIDIA official blogs for claimed capabilities"
+      - "Read SemiAnalysis articles for industry analysis"
+    output: "List of macro-level gap areas with multi-source confirmation"
+    anti_pattern: "Do NOT start by searching GitHub issues — that gives you fragments without context"
+
+  step_2_map_to_architecture_layers:
+    description: "Classify each gap into the correct architecture layer"
+    layers:
+      layer1_model: |
+        User-facing: "Can I run model X on AMD?"
+        Key question: Does the model load, produce correct outputs, at acceptable speed?
+        Evidence needed: accuracy eval (GSM8K, MMLU, etc.), throughput numbers
+      layer2_serving: |
+        Architecture: "Can I deploy at production scale?"
+        Key question: Do SOTA techniques (disagg, EP, MTP, DWDP) work on AMD?
+        Evidence needed: multi-node benchmark data, config details, failure modes
+      layer3_kernel: |
+        Root cause: "Why is AMD slower/broken on this feature?"
+        Key question: Which specific kernel/op/format is missing or underperforming?
+        Evidence needed: code paths, QuantKey formats, kernel dispatch logic, ASM vs Triton
+      layer4_engineering: |
+        Ecosystem: "Can I rely on this in production?"
+        Key question: CI coverage, Docker image quality, upstream contribution velocity
+        Evidence needed: CI config files, maintainer statements, fork vs upstream status
+    output: "Gaps organized by layer, each tagged with correct scope"
+
+  step_3_deep_read_primary_evidence:
+    description: "For each gap, find and fully read the primary evidence source"
+    actions:
+      - "Find the most specific GitHub issue/PR for this gap"
+      - "Read the FULL issue body — not just title"
+      - "Read ALL comments — engineering discussion reveals root cause and status"
+      - "Follow cross-references (linked PRs, related issues, CI runs)"
+      - "Note specific names: who reported, who responded, who is assigned"
+    what_to_extract:
+      - "Exact error messages and stack traces"
+      - "Specific hardware/software versions (image tags, commit hashes)"
+      - "Evaluation data (accuracy scores, throughput numbers)"
+      - "Server launch commands and configuration"
+      - "Engineer's diagnosis and proposed fix"
+      - "Timeline commitments"
+    anti_pattern: "Do NOT just read the title and first line of the body"
+
+  step_4_cross_reference:
+    description: "Verify findings against multiple sources"
+    actions:
+      - "Check if InferenceX benchmark data aligns with GitHub issue claims"
+      - "Check if AMD official blog claims match community experience"
+      - "Check if a fix claimed in issue comments shows up as merged PR"
+      - "Check if fork-specific fixes made it to upstream"
+    conflict_resolution: |
+      When sources disagree:
+      - InferenceX/MLPerf > AMD marketing blog (independent > vendor)
+      - Merged upstream PR > fork-only fix (reproducible > proprietary)
+      - Recent data > old data (check dates carefully)
+      - Eval data with CI links > anecdotal reports
+
+  step_5_trace_root_cause:
+    description: "Follow the causal chain to the deepest technical level"
+    examples:
+      shallow: "Fused MoE kernel doesn't work on ROCm"
+      deep: |
+        PR #38817 added fused activation-quantization pass to torch.compile pipeline.
+        This pass matches SiluMulBlockQuantPattern which requires per_token_group_fp8_quant op.
+        On ROCm, FP8 uses f8e4m3fnuz (NaN-free) vs NVIDIA f8e4m3fn.
+        The QuantKey(f8e4m3fnuz, scale(f32,dynamic,GroupShape(row=1,col=128)), symmetric)
+        is not in QUANT_OPS registry because the underlying C++ op
+        torch.ops._C.per_token_group_fp8_quant is not yet enabled for fnuz format.
+        Fix (PR #39387): disable entire fused path on ROCm → falls back to non-fused.
+        Impact: slower activation quantization in MoE models with AITER enabled.
+    actions:
+      - "Read the code path that fails (file, line, function)"
+      - "Identify the exact technical incompatibility"
+      - "Understand what the workaround/fallback is and its performance cost"
+      - "Determine if fix requires: (a) kernel work, (b) format support, (c) arch change"
+
+  step_6_assess_trajectory:
+    description: "Determine if gap is closing, stable, or widening"
+    signals:
+      closing:
+        - "Active PRs with recent commits addressing the gap"
+        - "AMD engineer assigned and commenting"
+        - "InferenceX over-time chart shows improvement"
+        - "Nightly regression test added for this feature"
+      stable:
+        - "Issue open but no recent activity"
+        - "Known limitation documented but no fix planned"
+        - "Workaround exists and is adequate"
+      widening:
+        - "NVIDIA adding new features (DWDP, FA3) that AMD doesn't track"
+        - "Regression: something that worked before now broken"
+        - "Fork divergence increasing"
+
+  step_7_write_knowledge_entry:
+    description: "Write the gap entry with full technical detail"
+    template: |
+      - feature: "name"
+        gap: "one-line summary"
+        severity: "critical|high|medium|low"
+        technical_detail: |
+          [Multi-paragraph explanation covering]:
+          - What exactly fails (with specific configs, models, hardware)
+          - Quantitative evidence (eval scores, throughput numbers)
+          - Root cause chain (which code path, which op, which format)
+          - Who is working on it (engineer handles, PR links)
+          - Current status (fix merged? in progress? unassigned?)
+          - What remains uncertain
+        sources:
+          - "URL 1 (with description)"
+          - "URL 2 (with description)"
+        tracking_issue: "primary issue URL"
+        trajectory: "closing|stable|widening"
+
+# ============================================================
+# SEARCH STRATEGY
+# ============================================================
+# How to find the RIGHT evidence for a gap
+
+search_strategy:
+
+  top_down_not_bottom_up:
+    principle: |
+      Start from what matters (hot models, production techniques) and drill down.
+      Do NOT start from random GitHub issues and try to build up.
+    order:
+      1: "Which models are hottest right now? (HuggingFace trending, InferenceX models)"
+      2: "What do these models depend on? (MoE, MLA, FP8, FP4, EP)"
+      3: "Which frameworks serve them? (vLLM, SGLang — check both)"
+      4: "What kernel backends do these frameworks use? (AITER, CK, Triton, CUTLASS)"
+      5: "Where specifically does AMD fall short? (search GitHub for specific combos)"
+
+  search_queries_by_purpose:
+    find_model_gap: "{model_name} rocm OR amd OR mi300 OR mi355 is:issue sort:updated"
+    find_feature_status: "{feature} rocm OR amd is:pr is:merged sort:updated"
+    find_active_work: "[AMD] OR [ROCm] is:pr is:merged merged:>30d sort:created"
+    find_regressions: "regression rocm OR amd is:issue is:open sort:updated"
+    find_parity_tracking: "parity CUDA rocm is:issue"
+    verify_fix: "specific_issue_number is:pr is:merged"
+
+  reading_depth_by_source:
+    github_issue: "Read FULL body + ALL comments. Follow linked PRs."
+    github_pr: "Read description + changed files list. Check if merged to main or fork."
+    inferencex: "Compare same model/GPU across dates. Check both FP4 and FP8."
+    amd_blog: "Cross-reference claims against InferenceX data and GitHub issues."
+    semianalysis: "High reliability for macro analysis. Match specific claims to GitHub evidence."
+
+# ============================================================
+# WHAT MAKES A GAP ENTRY "DONE"
+# ============================================================
+completeness_checklist:
+  - "Can someone unfamiliar with the gap understand exactly what's broken from the entry?"
+  - "Is there at least one quantitative data point (accuracy score, throughput number)?"
+  - "Is the root cause chain traced to a specific code/format/op level?"
+  - "Are all claims backed by URLs to primary sources?"
+  - "Is it clear who (if anyone) is working on a fix?"
+  - "Is it clear what's confirmed vs what's uncertain?"
+  - "Is the trajectory (closing/stable/widening) assessed?"

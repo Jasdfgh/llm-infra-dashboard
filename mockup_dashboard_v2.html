@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM Infra Gap Dashboard v2 — Mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0e17; --card: #111827; --card2: #0f1729; --surface: #0d1321;
+  --border: #1e293b; --border-active: #334155;
+  --text: #f1f5f9; --secondary: #94a3b8; --muted: #64748b; --dim: #475569;
+  --accent: #3b82f6; --accent-dim: rgba(59,130,246,0.08);
+  --green: #22c55e; --green-bg: rgba(34,197,94,0.08);
+  --yellow: #eab308; --yellow-bg: rgba(234,179,8,0.08);
+  --orange: #f97316; --orange-bg: rgba(249,115,22,0.08);
+  --red: #ef4444; --red-bg: rgba(239,68,68,0.08);
+  --purple: #a78bfa; --purple-bg: rgba(139,92,246,0.08);
+  --nvidia: #76b900; --amd: #ed1c24;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);overflow-x:hidden}
+.mono{font-family:'JetBrains Mono',monospace}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* Layout */
+.app{display:flex;min-height:100vh}
+.sidebar{width:240px;background:var(--surface);border-right:1px solid var(--border);position:fixed;height:100vh;display:flex;flex-direction:column;z-index:10}
+.main{margin-left:240px;flex:1;min-height:100vh}
+.content{max-width:1100px;margin:0 auto;padding:28px 32px}
+
+/* Sidebar */
+.logo{padding:20px 20px 16px;border-bottom:1px solid var(--border)}
+.logo h1{font-size:14px;font-weight:700;letter-spacing:-0.3px;line-height:1.4}
+.logo p{font-size:11px;color:var(--muted);margin-top:4px}
+.nav{flex:1;padding:12px;overflow-y:auto}
+.nav-section{margin-bottom:16px}
+.nav-section-title{font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);padding:0 8px 6px;font-weight:600}
+.nav-item{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;font-size:13px;color:var(--secondary);cursor:pointer;transition:all 0.15s;margin-bottom:1px}
+.nav-item:hover{background:var(--card);color:var(--text)}
+.nav-item.active{background:var(--accent-dim);color:var(--accent);font-weight:500}
+.nav-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.nav-count{margin-left:auto;font-size:11px;padding:1px 6px;border-radius:8px;background:var(--red-bg);color:var(--red);font-weight:600}
+.nav-count.ok{background:var(--green-bg);color:var(--green)}
+
+/* Page Header */
+.page-header{margin-bottom:24px}
+.page-header h2{font-size:20px;font-weight:700;letter-spacing:-0.3px}
+.page-header p{font-size:13px;color:var(--muted);margin-top:4px;max-width:700px;line-height:1.5}
+
+/* Summary Strip */
+.summary-strip{display:flex;gap:12px;margin-bottom:24px}
+.summary-stat{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;flex:1}
+.summary-stat .label{font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--muted);margin-bottom:4px}
+.summary-stat .value{font-size:22px;font-weight:700;font-family:'JetBrains Mono',monospace}
+.summary-stat .sub{font-size:11px;color:var(--muted);margin-top:2px}
+
+/* Layer Section */
+.layer-section{margin-bottom:28px}
+.layer-header{display:flex;align-items:center;gap:12px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.layer-number{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0}
+.layer-1{background:var(--accent-dim);color:var(--accent)}
+.layer-2{background:var(--orange-bg);color:var(--orange)}
+.layer-3{background:var(--purple-bg);color:var(--purple)}
+.layer-4{background:rgba(100,116,139,0.1);color:var(--secondary)}
+.layer-title{font-size:15px;font-weight:600}
+.layer-subtitle{font-size:12px;color:var(--muted)}
+.layer-gap-count{margin-left:auto;font-size:12px;color:var(--muted)}
+
+/* Gap Row (compact, clickable) */
+.gap-row{display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--card);border:1px solid var(--border);border-radius:10px;margin-bottom:6px;cursor:pointer;transition:all 0.12s}
+.gap-row:hover{border-color:var(--border-active);background:var(--card2);transform:translateX(2px)}
+.gap-severity{width:4px;height:36px;border-radius:2px;flex-shrink:0}
+.sev-critical{background:var(--red)}
+.sev-high{background:var(--orange)}
+.sev-medium{background:var(--yellow)}
+.sev-low{background:var(--green)}
+.gap-info{flex:1;min-width:0}
+.gap-name{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gap-desc{font-size:12px;color:var(--secondary);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gap-meta{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.gap-project{font-size:11px;padding:2px 8px;border-radius:6px;background:var(--accent-dim);color:var(--accent);font-weight:500}
+.gap-sev-label{font-size:10px;padding:2px 8px;border-radius:6px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px}
+.gap-sev-label.critical{background:var(--red-bg);color:var(--red)}
+.gap-sev-label.high{background:var(--orange-bg);color:var(--orange)}
+.gap-sev-label.medium{background:var(--yellow-bg);color:var(--yellow)}
+.gap-trajectory{font-size:11px;display:flex;align-items:center;gap:4px}
+.traj-up{color:var(--green)}
+.traj-flat{color:var(--muted)}
+.traj-down{color:var(--red)}
+.gap-arrow{color:var(--muted);font-size:16px;margin-left:4px}
+
+/* Project Tabs */
+.project-tabs{display:flex;gap:4px;margin-bottom:20px;background:var(--surface);padding:3px;border-radius:10px;border:1px solid var(--border);width:fit-content}
+.project-tab{padding:6px 16px;border-radius:8px;font-size:12.5px;color:var(--muted);cursor:pointer;transition:all 0.15s;user-select:none}
+.project-tab:hover{color:var(--secondary)}
+.project-tab.active{background:var(--card);color:var(--text);font-weight:500;box-shadow:0 1px 3px rgba(0,0,0,0.2)}
+
+/* HW context */
+.hw-tag{font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(100,116,139,0.1);color:var(--dim)}
+
+/* Sidebar status */
+.sidebar-status{padding:12px 16px;border-top:1px solid var(--border);margin-top:auto}
+.status-row{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);margin-bottom:4px}
+.status-dot{width:6px;height:6px;border-radius:50%;background:var(--green)}
+
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.fade-in{animation:fadeIn 0.3s ease forwards}
+.d1{animation-delay:0.05s;opacity:0}
+.d2{animation-delay:0.1s;opacity:0}
+.d3{animation-delay:0.15s;opacity:0}
+.d4{animation-delay:0.2s;opacity:0}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- ===== Sidebar ===== -->
+  <nav class="sidebar">
+    <div class="logo">
+      <h1>LLM Infra<br>Gap Dashboard</h1>
+      <p>AMD vs NVIDIA · Deep Analysis</p>
+    </div>
+    <div class="nav">
+      <div class="nav-section">
+        <div class="nav-section-title">Overview</div>
+        <div class="nav-item active">
+          <div class="nav-dot" style="background:var(--accent)"></div>
+          All Gaps
+          <span class="nav-count">18</span>
+        </div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-title">By Project</div>
+        <div class="nav-item">
+          <div class="nav-dot" style="background:var(--orange)"></div>
+          vLLM
+          <span class="nav-count">10</span>
+        </div>
+        <div class="nav-item">
+          <div class="nav-dot" style="background:var(--orange)"></div>
+          SGLang
+          <span class="nav-count">8</span>
+        </div>
+        <div class="nav-item">
+          <div class="nav-dot" style="background:var(--muted)"></div>
+          AITER / CK
+        </div>
+        <div class="nav-item">
+          <div class="nav-dot" style="background:var(--muted)"></div>
+          MoRI
+        </div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-title">By Layer</div>
+        <div class="nav-item">
+          <div class="nav-dot" style="background:var(--accent)"></div>
+          L1 · Models
+          <span class="nav-count">3</span>
+        </div>
+        <div class="nav-item">
+          <div class="nav-dot" style="background:var(--orange)"></div>
+          L2 · Serving Arch
+          <span class="nav-count">7</span>
+        </div>
+        <div class="nav-item">
+          <div class="nav-dot" style="background:var(--purple)"></div>
+          L3 · Kernels
+          <span class="nav-count">5</span>
+        </div>
+        <div class="nav-item">
+          <div class="nav-dot" style="background:var(--secondary)"></div>
+          L4 · Engineering
+          <span class="nav-count">5</span>
+        </div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-title">Resources</div>
+        <div class="nav-item">
+          <div class="nav-dot" style="background:var(--muted)"></div>
+          Hardware Map
+        </div>
+        <div class="nav-item">
+          <div class="nav-dot" style="background:var(--muted)"></div>
+          InferenceX Data
+        </div>
+        <div class="nav-item">
+          <div class="nav-dot" style="background:var(--muted)"></div>
+          Methodology
+        </div>
+      </div>
+    </div>
+    <div class="sidebar-status">
+      <div class="status-row"><div class="status-dot"></div>Knowledge base: 2 projects</div>
+      <div class="status-row" style="color:var(--secondary)">Last updated: Apr 15, 2026</div>
+      <div class="status-row" style="color:var(--dim)">18 gaps · 47 evidence items</div>
+    </div>
+  </nav>
+
+  <!-- ===== Main Content ===== -->
+  <main class="main">
+    <div class="content">
+      <div class="page-header fade-in">
+        <h2>Gap Overview — All Projects</h2>
+        <p>基于 InferenceX v2、MLPerf 6.0、GitHub 一手证据的多源交叉验证分析。
+           每个 gap 包含完整推理链：宏观信号 → 量化证据 → 技术根因 → 修复进展 → 趋势判断。</p>
+      </div>
+
+      <!-- Summary -->
+      <div class="summary-strip fade-in d1">
+        <div class="summary-stat">
+          <div class="label">Total Gaps</div>
+          <div class="value" style="color:var(--red)">18</div>
+          <div class="sub">across 2 projects</div>
+        </div>
+        <div class="summary-stat">
+          <div class="label">Critical</div>
+          <div class="value" style="color:var(--red)">2</div>
+          <div class="sub">FP4 composability</div>
+        </div>
+        <div class="summary-stat">
+          <div class="label">Closing ↑</div>
+          <div class="value" style="color:var(--green)">4</div>
+          <div class="sub">active PRs / fixes</div>
+        </div>
+        <div class="summary-stat">
+          <div class="label">Widening ↓</div>
+          <div class="value" style="color:var(--orange)">1</div>
+          <div class="sub">NVL72 rack-scale gap</div>
+        </div>
+        <div class="summary-stat">
+          <div class="label">FP8 Parity</div>
+          <div class="value" style="color:var(--green)">✓</div>
+          <div class="sub">MI355X ≈ B200 on SGLang</div>
+        </div>
+      </div>
+
+      <!-- Project Tabs -->
+      <div class="project-tabs fade-in d2">
+        <div class="project-tab active">All Projects</div>
+        <div class="project-tab">vLLM</div>
+        <div class="project-tab">SGLang</div>
+      </div>
+
+      <!-- ===== Layer 1: Model ===== -->
+      <div class="layer-section fade-in d2">
+        <div class="layer-header">
+          <div class="layer-number layer-1">L1</div>
+          <div>
+            <div class="layer-title">Model Layer</div>
+            <div class="layer-subtitle">用户直接感知 — 某个模型在 AMD 上的具体问题</div>
+          </div>
+          <div class="layer-gap-count">3 gaps</div>
+        </div>
+
+        <div class="gap-row" onclick="location.href='mockup_analysis_view.html'">
+          <div class="gap-severity sev-high"></div>
+          <div class="gap-info">
+            <div class="gap-name">GPT-OSS 120B: MI355X stuck on forked vLLM 0.10.1</div>
+            <div class="gap-desc">Official vLLM image has hard errors on MI355X; fork is 6+ months old</div>
+          </div>
+          <div class="gap-meta">
+            <span class="gap-project">vLLM</span>
+            <span class="gap-sev-label high">High</span>
+            <span class="gap-trajectory traj-up">↑ closing</span>
+            <span class="gap-arrow">›</span>
+          </div>
+        </div>
+
+        <div class="gap-row">
+          <div class="gap-severity sev-high"></div>
+          <div class="gap-info">
+            <div class="gap-name">GLM-5, Qwen3.5: No disagg serving for hybrid attention</div>
+            <div class="gap-desc">MoRI-IO can't transfer state for GDA/DSA attention — blocks scaling</div>
+          </div>
+          <div class="gap-meta">
+            <span class="gap-project">SGLang</span>
+            <span class="gap-sev-label high">High</span>
+            <span class="gap-trajectory traj-flat">— stable</span>
+            <span class="gap-arrow">›</span>
+          </div>
+        </div>
+
+        <div class="gap-row">
+          <div class="gap-severity sev-medium"></div>
+          <div class="gap-info">
+            <div class="gap-name">NVFP4 model variants: NVIDIA-exclusive format</div>
+            <div class="gap-desc">Gemma-4-NVFP4 (291K downloads) and similar checkpoints only run on NVIDIA</div>
+          </div>
+          <div class="gap-meta">
+            <span class="gap-project">All</span>
+            <span class="gap-sev-label medium">Medium</span>
+            <span class="gap-trajectory traj-flat">— structural</span>
+            <span class="gap-arrow">›</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== Layer 2: Serving Architecture ===== -->
+      <div class="layer-section fade-in d3">
+        <div class="layer-header">
+          <div class="layer-number layer-2">L2</div>
+          <div>
+            <div class="layer-title">Serving Architecture Layer</div>
+            <div class="layer-subtitle">生产部署受限 — SOTA 推理技术在 AMD 上的可用性</div>
+          </div>
+          <div class="layer-gap-count">7 gaps</div>
+        </div>
+
+        <div class="gap-row" onclick="location.href='mockup_analysis_view.html'">
+          <div class="gap-severity sev-critical"></div>
+          <div class="gap-info">
+            <div class="gap-name">FP4 + Disagg + WideEP Composability — AMD #1 Issue</div>
+            <div class="gap-desc">DPA 0.0% accuracy, MTP truncation; 3 optimizations单独可用但组合时崩溃</div>
+          </div>
+          <div class="gap-meta">
+            <span class="gap-project">vLLM</span>
+            <span class="gap-project">SGLang</span>
+            <span class="gap-sev-label critical">Critical</span>
+            <span class="gap-trajectory traj-flat">— stable</span>
+            <span class="gap-arrow">›</span>
+          </div>
+        </div>
+
+        <div class="gap-row" onclick="location.href='mockup_analysis_view.html'">
+          <div class="gap-severity sev-high"></div>
+          <div class="gap-info">
+            <div class="gap-name">TRT-LLM Exclusive: 35-50% perf advantage, ATOM rejected</div>
+            <div class="gap-desc">vLLM community rejected ATOM in-tree; AMD pivoting to upstream kernels</div>
+          </div>
+          <div class="gap-meta">
+            <span class="gap-project">vLLM</span>
+            <span class="gap-sev-label high">High</span>
+            <span class="gap-trajectory traj-flat">— structural</span>
+            <span class="gap-arrow">›</span>
+          </div>
+        </div>
+
+        <div class="gap-row" onclick="location.href='mockup_analysis_view.html'">
+          <div class="gap-severity sev-high"></div>
+          <div class="gap-info">
+            <div class="gap-name">NVL72 Rack-Scale WideEP: 900 GB/s NVLink vs IB 100 GB/s</div>
+            <div class="gap-desc">AMD MI455X UALoE72 not until Q2 2027 — 12+ months hardware architecture gap</div>
+          </div>
+          <div class="gap-meta">
+            <span class="gap-project">All</span>
+            <span class="gap-sev-label high">High</span>
+            <span class="gap-trajectory traj-down">↓ widening</span>
+            <span class="gap-arrow">›</span>
+          </div>
+        </div>
+
+        <div class="gap-row" onclick="location.href='mockup_analysis_view.html'">
+          <div class="gap-severity sev-high"></div>
+          <div class="gap-info">
+            <div class="gap-name">vLLM Router MoRI Integration</div>
+            <div class="gap-desc">3 PRs published Apr 11, benchmarks confirm functionality — nightly images pending</div>
+          </div>
+          <div class="gap-meta">
+            <span class="gap-project">vLLM</span>
+            <span class="gap-sev-label high">High</span>
+            <span class="gap-trajectory traj-up">↑ closing</span>
+            <span class="gap-arrow">›</span>
+          </div>
+        </div>
+
+        <div class="gap-row">
+          <div class="gap-severity sev-high"></div>
+          <div class="gap-info">
+            <div class="gap-name">MoRI Hybrid Attention State Transfer</div>
+            <div class="gap-desc">Blocks disagg for Qwen3.5 (GDA), GLM-5 (DSA), Mamba models</div>
+          </div>
+          <div class="gap-meta">
+            <span class="gap-project">SGLang</span>
+            <span class="gap-sev-label high">High</span>
+            <span class="gap-trajectory traj-flat">— stable</span>
+            <span class="gap-arrow">›</span>
+          </div>
+        </div>
+
+        <div class="gap-row">
+          <div class="gap-severity sev-medium"></div>
+          <div class="gap-info">
+            <div class="gap-name">DWDP Parallelism: Not on AMD</div>
+            <div class="gap-desc">New parallelism strategy; TRT-LLM + CUDA SGLang implementing, AMD asks for timeline</div>
+          </div>
+          <div class="gap-meta">
+            <span class="gap-project">SGLang</span>
+            <span class="gap-sev-label medium">Medium</span>
+            <span class="gap-trajectory traj-flat">— stable</span>
+            <span class="gap-arrow">›</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== Layer 3: Kernel ===== -->
+      <div class="layer-section fade-in d3">
+        <div class="layer-header">
+          <div class="layer-number layer-3">L3</div>
+          <div>
+            <div class="layer-title">Kernel / Quantization Layer</div>
+            <div class="layer-subtitle">性能差距的技术根因 — 具体的 kernel、格式、op 级别差异</div>
+          </div>
+          <div class="layer-gap-count">5 gaps</div>
+        </div>
+
+        <div class="gap-row">
+          <div class="gap-severity sev-high"></div>
+          <div class="gap-info">
+            <div class="gap-name">FlashAttention 3: CUDA-only, ROCm falls back to SDPA</div>
+            <div class="gap-desc">New dispatch layer selects FA3 for multimodal; FA2 works, FA3 enablement tracked</div>
+          </div>
+          <div class="gap-meta">
+            <span class="gap-project">SGLang</span>
+            <span class="gap-sev-label high">High</span>
+            <span class="gap-trajectory traj-flat">— stable</span>
+            <span class="gap-arrow">›</span>
+          </div>
+        </div>
+
+        <div class="gap-row">
+          <div class="gap-severity sev-medium"></div>
+          <div class="gap-info">
+            <div class="gap-name">Fused MoE Activation Quant: FP8 fnuz format breaks fused path</div>
+            <div class="gap-desc">AMD f8e4m3fnuz vs NVIDIA f8e4m3fn; per_token_group_fp8_quant not enabled for fnuz</div>
+          </div>
+          <div class="gap-meta">
+            <span class="gap-project">vLLM</span>
+            <span class="gap-sev-label medium">Medium</span>
+            <span class="gap-trajectory traj-flat">— workaround</span>
+            <span class="gap-arrow">›</span>
+          </div>
+        </div>
+
+        <div class="gap-row">
+          <div class="gap-severity sev-medium"></div>
+          <div class="gap-info">
+            <div class="gap-name">Attention Backend Depth: 11 NVIDIA vs 6 AMD in vLLM</div>
+            <div class="gap-desc">CUTLASS_MLA, TURBOQUANT, FLEX_ATTENTION NVIDIA-only; AMD depends entirely on AITER</div>
+          </div>
+          <div class="gap-meta">
+            <span class="gap-project">vLLM</span>
+            <span class="gap-sev-label medium">Medium</span>
+            <span class="gap-trajectory traj-flat">— stable</span>
+            <span class="gap-arrow">›</span>
+          </div>
+        </div>
+
+        <div class="gap-row">
+          <div class="gap-severity sev-medium"></div>
+          <div class="gap-info">
+            <div class="gap-name">AITER Stability: Upgrades cause accuracy drops and crashes</div>
+            <div class="gap-desc">v0.5.10 Docker broken (#22279), 2-3% accuracy regression on Qwen3-235B (#22568)</div>
+          </div>
+          <div class="gap-meta">
+            <span class="gap-project">SGLang</span>
+            <span class="gap-sev-label medium">Medium</span>
+            <span class="gap-trajectory traj-flat">— recurring</span>
+            <span class="gap-arrow">›</span>
+          </div>
+        </div>
+
+        <div class="gap-row">
+          <div class="gap-severity sev-medium"></div>
+          <div class="gap-info">
+            <div class="gap-name">Marlin Kernels: Not on ROCm, no one has started work</div>
+            <div class="gap-desc">Marlin gives 2.5x GPTQ speedup on NVIDIA; LoRA-compatible attention also missing</div>
+          </div>
+          <div class="gap-meta">
+            <span class="gap-project">vLLM</span>
+            <span class="gap-sev-label medium">Medium</span>
+            <span class="gap-trajectory traj-flat">— no work started</span>
+            <span class="gap-arrow">›</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== Layer 4: Engineering ===== -->
+      <div class="layer-section fade-in d4">
+        <div class="layer-header">
+          <div class="layer-number layer-4">L4</div>
+          <div>
+            <div class="layer-title">Engineering / Ecosystem Layer</div>
+            <div class="layer-subtitle">长期可靠性 — CI 覆盖、Docker 质量、upstream 贡献速度</div>
+          </div>
+          <div class="layer-gap-count">5 gaps</div>
+        </div>
+
+        <div class="gap-row">
+          <div class="gap-severity sev-high"></div>
+          <div class="gap-info">
+            <div class="gap-name">vLLM CI: Zero MI355X, cannot do day-0 ROCm support</div>
+            <div class="gap-desc">Need 20+ MI300X/MI325X/MI355X machines; SemiAnalysis pushing AMD to contribute</div>
+          </div>
+          <div class="gap-meta">
+            <span class="gap-project">vLLM</span>
+            <span class="gap-sev-label high">High</span>
+            <span class="gap-trajectory traj-up">↑ slowly closing</span>
+            <span class="gap-arrow">›</span>
+          </div>
+        </div>
+
+        <div class="gap-row">
+          <div class="gap-severity sev-high"></div>
+          <div class="gap-info">
+            <div class="gap-name">Fork vs Upstream Divergence</div>
+            <div class="gap-desc">AMD benchmarks on fork images that users can't reproduce; moving upstream but gap remains</div>
+          </div>
+          <div class="gap-meta">
+            <span class="gap-project">vLLM</span>
+            <span class="gap-project">SGLang</span>
+            <span class="gap-sev-label high">High</span>
+            <span class="gap-trajectory traj-up">↑ closing</span>
+            <span class="gap-arrow">›</span>
+          </div>
+        </div>
+
+        <div class="gap-row">
+          <div class="gap-severity sev-medium"></div>
+          <div class="gap-info">
+            <div class="gap-name">SGLang Disagg Nightly Testing: CUDA 48-GPU, AMD not yet</div>
+            <div class="gap-desc">AMD proposed Apr-Jun 2026 timeline; unclear if April milestone met</div>
+          </div>
+          <div class="gap-meta">
+            <span class="gap-project">SGLang</span>
+            <span class="gap-sev-label medium">Medium</span>
+            <span class="gap-trajectory traj-up">↑ planned</span>
+            <span class="gap-arrow">›</span>
+          </div>
+        </div>
+
+        <div class="gap-row">
+          <div class="gap-severity sev-medium"></div>
+          <div class="gap-info">
+            <div class="gap-name">Docker Image Quality: Users hunt for working versions</div>
+            <div class="gap-desc">v0.5.10 broken, v0.5.9 works; MoRI requires source build</div>
+          </div>
+          <div class="gap-meta">
+            <span class="gap-project">SGLang</span>
+            <span class="gap-sev-label medium">Medium</span>
+            <span class="gap-trajectory traj-flat">— recurring</span>
+            <span class="gap-arrow">›</span>
+          </div>
+        </div>
+
+        <div class="gap-row">
+          <div class="gap-severity sev-medium"></div>
+          <div class="gap-info">
+            <div class="gap-name">vLLM Q2 Roadmap: AMD is "interfacing" not core target</div>
+            <div class="gap-desc">Core SIG optimizes for GB200/B200/H200; AMD must self-serve upstream</div>
+          </div>
+          <div class="gap-meta">
+            <span class="gap-project">vLLM</span>
+            <span class="gap-sev-label medium">Medium</span>
+            <span class="gap-trajectory traj-flat">— structural</span>
+            <span class="gap-arrow">›</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+</body>
+</html>

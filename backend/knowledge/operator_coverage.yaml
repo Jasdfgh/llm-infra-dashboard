@@ -1,0 +1,624 @@
+source: ROCm/AI-Frameworks-Dashboard op-coverage.json
+last_updated: '2026-03-12'
+description: AMD vs NVIDIA operator coverage matrix — precise per-operator support
+  status
+categories:
+- id: attention
+  name: Attention
+  amd_projects:
+  - Aiter
+  nv_projects:
+  - FlashInfer
+  - FlashMLA
+  operators:
+  - name: MHA Prefill (FP16/BF16)
+    amd_supported: true
+    nv_supported: true
+    backend: CK / ASM / Triton
+  - name: MHA Prefill (FP8)
+    amd_supported: true
+    nv_supported: true
+    backend: CK / ASM / Triton
+  - name: MHA Decode
+    amd_supported: true
+    nv_supported: true
+    backend: CK / ASM / Triton
+  - name: MHA Varlen
+    amd_supported: true
+    nv_supported: true
+    backend: CK / ASM / Triton
+  - name: MLA Decode
+    amd_supported: true
+    nv_supported: true
+    backend: ASM / Triton / HipKittens
+  - name: MLA Prefill
+    amd_supported: true
+    nv_supported: false
+    backend: ASM / Triton
+  - name: Paged Attention Decode
+    amd_supported: true
+    nv_supported: true
+    backend: ASM / HIP / Gluon / Triton
+  - name: Paged Attention Prefill
+    amd_supported: true
+    nv_supported: true
+    backend: ASM / HIP / Triton
+  - name: Paged Attention Ragged
+    amd_supported: true
+    nv_supported: true
+    backend: HIP / Triton
+  - name: Cascade Attention
+    amd_supported: false
+    nv_supported: true
+    backend: null
+  - name: Sparse MLA
+    amd_supported: true
+    nv_supported: true
+    backend: Triton
+  - name: SAGE Attention (MXFP4)
+    amd_supported: true
+    nv_supported: false
+    backend: Triton
+  - name: HSTU Attention
+    amd_supported: true
+    nv_supported: false
+    backend: Triton
+  - name: POD Attention
+    amd_supported: true
+    nv_supported: true
+    backend: Triton
+  - name: Lean Attention
+    amd_supported: true
+    nv_supported: false
+    backend: Triton
+  - name: Unified Attention
+    amd_supported: true
+    nv_supported: false
+    backend: Triton
+  summary:
+    total: 16
+    amd_supported: 15
+    nv_supported: 11
+    amd_only: 5
+    nv_only: 1
+    both: 10
+- id: gemm
+  name: GEMM
+  amd_projects:
+  - Aiter
+  - hipBLASLt
+  nv_projects:
+  - cuBLASLt
+  operators:
+  - name: GEMM FP16/BF16
+    amd_supported: true
+    nv_supported: true
+    backend: ASM / CK / Triton
+  - name: GEMM FP8 (per-tensor)
+    amd_supported: true
+    nv_supported: true
+    backend: CK / ASM / Triton
+  - name: GEMM FP8 blockscale
+    amd_supported: true
+    nv_supported: true
+    backend: CK / ASM / Triton
+  - name: GEMM INT8
+    amd_supported: true
+    nv_supported: true
+    backend: CK / ASM / Triton
+  - name: GEMM FP4/MXFP4
+    amd_supported: true
+    nv_supported: true
+    backend: ASM / CK / Triton
+  - name: GEMM A16W8 blockscale
+    amd_supported: true
+    nv_supported: false
+    backend: Triton
+  - name: GEMM A16WFP4
+    amd_supported: true
+    nv_supported: false
+    backend: Triton
+  - name: GEMM A8WFP4
+    amd_supported: true
+    nv_supported: false
+    backend: Triton
+  - name: Batched GEMM BF16
+    amd_supported: true
+    nv_supported: true
+    backend: CK / Triton
+  - name: Batched GEMM FP8
+    amd_supported: true
+    nv_supported: true
+    backend: CK / Triton
+  - name: Batched GEMM FP4
+    amd_supported: true
+    nv_supported: true
+    backend: Triton
+  - name: Grouped GEMM (MoE)
+    amd_supported: true
+    nv_supported: true
+    backend: ASM / CK / FlyDSL / Triton
+  - name: GEMM + Bias fusion
+    amd_supported: true
+    nv_supported: true
+    backend: Triton
+  - name: GEMM + ReLU/GELU/SiLU fusion
+    amd_supported: true
+    nv_supported: true
+    backend: Triton
+  - name: DeepGEMM
+    amd_supported: true
+    nv_supported: true
+    backend: CK
+  - name: Fused GEMM (multi-stage)
+    amd_supported: true
+    nv_supported: false
+    backend: Triton
+  - name: Feed-Forward Fused
+    amd_supported: true
+    nv_supported: true
+    backend: Triton
+  - name: B-preshuffle GEMM
+    amd_supported: true
+    nv_supported: false
+    backend: CK / ASM
+  summary:
+    total: 18
+    amd_supported: 18
+    nv_supported: 13
+    amd_only: 5
+    nv_only: 0
+    both: 13
+- id: moe
+  name: MoE
+  amd_projects:
+  - Aiter
+  nv_projects:
+  - FlashInfer
+  operators:
+  - name: Fused MoE BF16
+    amd_supported: true
+    nv_supported: true
+    backend: ASM / CK / FlyDSL / Triton
+  - name: Fused MoE FP8
+    amd_supported: true
+    nv_supported: true
+    backend: ASM / CK / FlyDSL / Triton
+  - name: Fused MoE FP8 blockscale
+    amd_supported: true
+    nv_supported: true
+    backend: Triton / ASM
+  - name: Fused MoE MXFP4
+    amd_supported: true
+    nv_supported: true
+    backend: Triton
+  - name: Fused MoE INT8 SmoothQuant
+    amd_supported: true
+    nv_supported: false
+    backend: ASM / CK / Triton
+  - name: Fused MoE A8W4
+    amd_supported: true
+    nv_supported: false
+    backend: ASM / CK / Triton
+  - name: Fused MoE A4W4
+    amd_supported: true
+    nv_supported: false
+    backend: ASM / CK / FlyDSL / Triton
+  - name: MoE + SiLU fused
+    amd_supported: true
+    nv_supported: true
+    backend: ASM / CK / FlyDSL / Triton
+  - name: MoE + GELU fused
+    amd_supported: true
+    nv_supported: false
+    backend: ASM / CK / FlyDSL / Triton
+  - name: MoE 2-stage (CK/CKTile)
+    amd_supported: true
+    nv_supported: false
+    backend: CK / FlyDSL / Triton
+  - name: TopK Softmax
+    amd_supported: true
+    nv_supported: true
+    backend: ASM / CK / Triton
+  - name: TopK Sigmoid
+    amd_supported: true
+    nv_supported: true
+    backend: CK / Triton
+  - name: Biased Grouped TopK
+    amd_supported: true
+    nv_supported: true
+    backend: HIP / Triton
+  - name: MoE Sorting
+    amd_supported: true
+    nv_supported: false
+    backend: CK / Triton
+  - name: MoE Align Block Size
+    amd_supported: true
+    nv_supported: false
+    backend: ASM / Triton
+  - name: MoE Routing (bitmatrix)
+    amd_supported: true
+    nv_supported: false
+    backend: ASM / Triton
+  summary:
+    total: 16
+    amd_supported: 16
+    nv_supported: 8
+    amd_only: 8
+    nv_only: 0
+    both: 8
+- id: normalization
+  name: Normalization
+  amd_projects:
+  - Aiter
+  nv_projects:
+  - FlashInfer
+  operators:
+  - name: RMSNorm
+    amd_supported: true
+    nv_supported: true
+    backend: CK / HIP / Triton
+  - name: RMSNorm + Add (fused)
+    amd_supported: true
+    nv_supported: true
+    backend: CK / HIP / Triton
+  - name: RMSNorm + Quant (fused)
+    amd_supported: true
+    nv_supported: false
+    backend: HIP / CK / Triton
+  - name: RMSNorm + Add + Quant (fused)
+    amd_supported: true
+    nv_supported: true
+    backend: HIP / CK / Triton
+  - name: RMSNorm + SmoothQuant
+    amd_supported: true
+    nv_supported: false
+    backend: CK / Triton
+  - name: LayerNorm
+    amd_supported: true
+    nv_supported: true
+    backend: CK / ASM / Triton
+  - name: LayerNorm + Add
+    amd_supported: true
+    nv_supported: false
+    backend: CK / ASM / Triton
+  - name: LayerNorm + SmoothQuant
+    amd_supported: true
+    nv_supported: false
+    backend: CK / Triton
+  - name: GroupNorm
+    amd_supported: true
+    nv_supported: false
+    backend: HIP / Triton
+  summary:
+    total: 9
+    amd_supported: 9
+    nv_supported: 4
+    amd_only: 5
+    nv_only: 0
+    both: 4
+- id: quantization
+  name: Quantization
+  amd_projects:
+  - Aiter
+  nv_projects:
+  - FlashInfer
+  operators:
+  - name: Static per-tensor quant
+    amd_supported: true
+    nv_supported: true
+    backend: HIP / Triton
+  - name: Dynamic per-tensor quant
+    amd_supported: true
+    nv_supported: false
+    backend: HIP / Triton
+  - name: Dynamic per-token quant
+    amd_supported: true
+    nv_supported: true
+    backend: HIP / Triton
+  - name: Per-group FP4 quant
+    amd_supported: true
+    nv_supported: true
+    backend: HIP / Triton
+  - name: SmoothQuant
+    amd_supported: true
+    nv_supported: false
+    backend: CK
+  - name: MXFP4 quant
+    amd_supported: true
+    nv_supported: true
+    backend: HIP / Triton
+  - name: Fused FP8 quant
+    amd_supported: true
+    nv_supported: true
+    backend: HIP / Triton
+  summary:
+    total: 7
+    amd_supported: 7
+    nv_supported: 5
+    amd_only: 2
+    nv_only: 0
+    both: 5
+- id: positional-encoding
+  name: Positional Encoding
+  amd_projects:
+  - Aiter
+  nv_projects:
+  - FlashInfer
+  operators:
+  - name: RoPE (NEOX/GPT-J)
+    amd_supported: true
+    nv_supported: true
+    backend: HIP / Triton
+  - name: RoPE cached (cos/sin)
+    amd_supported: true
+    nv_supported: true
+    backend: HIP / Triton
+  - name: RoPE 2-channel (Q+K)
+    amd_supported: true
+    nv_supported: true
+    backend: HIP / Triton
+  - name: RoPE THD (varlen)
+    amd_supported: true
+    nv_supported: true
+    backend: HIP / Triton
+  - name: RoPE 2D (vision)
+    amd_supported: true
+    nv_supported: true
+    backend: HIP
+  - name: RoPE + positions + offsets
+    amd_supported: true
+    nv_supported: true
+    backend: HIP / Triton
+  - name: Batched RoPE
+    amd_supported: true
+    nv_supported: true
+    backend: HIP
+  - name: LLaMA 3.1 RoPE
+    amd_supported: false
+    nv_supported: true
+    backend: null
+  summary:
+    total: 8
+    amd_supported: 7
+    nv_supported: 8
+    amd_only: 0
+    nv_only: 1
+    both: 7
+- id: sampling
+  name: Sampling
+  amd_projects:
+  - Aiter
+  nv_projects:
+  - FlashInfer
+  operators:
+  - name: Greedy sampling
+    amd_supported: true
+    nv_supported: false
+    backend: HIP
+  - name: Random sampling
+    amd_supported: true
+    nv_supported: true
+    backend: HIP
+  - name: Top-K sampling
+    amd_supported: true
+    nv_supported: true
+    backend: HIP
+  - name: Top-P sampling
+    amd_supported: true
+    nv_supported: true
+    backend: HIP
+  - name: Top-K + Top-P joint
+    amd_supported: true
+    nv_supported: true
+    backend: HIP
+  - name: Min-P sampling
+    amd_supported: false
+    nv_supported: true
+    backend: null
+  summary:
+    total: 6
+    amd_supported: 5
+    nv_supported: 5
+    amd_only: 1
+    nv_only: 1
+    both: 4
+- id: elementwise
+  name: Elementwise / Activation
+  amd_projects:
+  - Aiter
+  nv_projects:
+  - FlashInfer
+  operators:
+  - name: SiLU and mul
+    amd_supported: true
+    nv_supported: true
+    backend: HIP
+  - name: GELU and mul
+    amd_supported: true
+    nv_supported: true
+    backend: HIP
+  - name: GELU-Tanh and mul
+    amd_supported: true
+    nv_supported: true
+    backend: HIP
+  - name: Scaled SiLU and mul
+    amd_supported: true
+    nv_supported: true
+    backend: HIP
+  - name: add / sub / mul / div
+    amd_supported: true
+    nv_supported: false
+    backend: HIP
+  - name: sigmoid / tanh
+    amd_supported: true
+    nv_supported: false
+    backend: HIP
+  summary:
+    total: 6
+    amd_supported: 6
+    nv_supported: 4
+    amd_only: 2
+    nv_only: 0
+    both: 4
+- id: kv-cache
+  name: KV Cache Management
+  amd_projects:
+  - Aiter
+  nv_projects:
+  - FlashInfer
+  operators:
+  - name: reshape_and_cache
+    amd_supported: true
+    nv_supported: true
+    backend: HIP
+  - name: reshape_and_cache FP8/INT8
+    amd_supported: true
+    nv_supported: false
+    backend: HIP
+  - name: reshape_and_cache block quant
+    amd_supported: true
+    nv_supported: false
+    backend: HIP
+  - name: swap_blocks
+    amd_supported: true
+    nv_supported: true
+    backend: HIP
+  - name: copy_blocks
+    amd_supported: true
+    nv_supported: true
+    backend: HIP
+  - name: concat_and_cache MLA
+    amd_supported: true
+    nv_supported: true
+    backend: HIP
+  - name: Fused QK+RoPE+Cache+Quant
+    amd_supported: true
+    nv_supported: false
+    backend: HIP
+  - name: Paged KV append
+    amd_supported: false
+    nv_supported: true
+    backend: null
+  summary:
+    total: 8
+    amd_supported: 7
+    nv_supported: 5
+    amd_only: 3
+    nv_only: 1
+    both: 4
+- id: communication
+  name: Communication
+  amd_projects:
+  - Aiter
+  - Mori
+  - RCCL
+  nv_projects:
+  - DeepEP
+  - NCCL
+  operators:
+  - name: AllReduce
+    amd_supported: true
+    nv_supported: true
+    backend: HIP / ASM
+  - name: AllReduce + RMSNorm (fused)
+    amd_supported: true
+    nv_supported: true
+    backend: ASM / HIP
+  - name: ReduceScatter
+    amd_supported: true
+    nv_supported: true
+    backend: HIP
+  - name: AllGather
+    amd_supported: true
+    nv_supported: true
+    backend: HIP
+  - name: AllToAll
+    amd_supported: true
+    nv_supported: true
+    backend: null
+  - name: Broadcast
+    amd_supported: true
+    nv_supported: true
+    backend: null
+  - name: Send / Recv
+    amd_supported: true
+    nv_supported: true
+    backend: null
+  - name: EP Dispatch (IntraNode)
+    amd_supported: true
+    nv_supported: true
+    backend: HIP
+  - name: EP Dispatch (InterNode)
+    amd_supported: true
+    nv_supported: true
+    backend: HIP
+  - name: EP Combine (IntraNode)
+    amd_supported: true
+    nv_supported: true
+    backend: HIP
+  - name: EP Combine (InterNode)
+    amd_supported: true
+    nv_supported: true
+    backend: HIP
+  - name: EP Low-Latency (LL)
+    amd_supported: true
+    nv_supported: true
+    backend: null
+  - name: RDMA Read/Write (P2P)
+    amd_supported: true
+    nv_supported: true
+    backend: null
+  - name: RDMA Batch IO
+    amd_supported: true
+    nv_supported: true
+    backend: null
+  - name: Shmem (symmetric memory)
+    amd_supported: true
+    nv_supported: true
+    backend: null
+  - name: ReduceScatter+RMSNorm+Quant+AllGather (fused)
+    amd_supported: true
+    nv_supported: false
+    backend: ASM / HIP
+  summary:
+    total: 16
+    amd_supported: 16
+    nv_supported: 15
+    amd_only: 1
+    nv_only: 0
+    both: 15
+- id: other
+  name: Other
+  amd_projects:
+  - Aiter
+  nv_projects:
+  - FlashInfer
+  operators:
+  - name: Causal Conv1D
+    amd_supported: true
+    nv_supported: true
+    backend: HIP / Triton
+  - name: Gated Delta Net (SSM)
+    amd_supported: true
+    nv_supported: false
+    backend: Triton
+  - name: Weight Shuffle/Preshuffle
+    amd_supported: true
+    nv_supported: true
+    backend: PyTorch
+  - name: Ragged Layout Transform
+    amd_supported: true
+    nv_supported: true
+    backend: Triton
+  - name: Softmax
+    amd_supported: true
+    nv_supported: false
+    backend: Triton
+  summary:
+    total: 5
+    amd_supported: 5
+    nv_supported: 3
+    amd_only: 2
+    nv_only: 0
+    both: 3

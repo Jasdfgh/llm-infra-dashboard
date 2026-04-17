@@ -1,0 +1,99 @@
+# Project Knowledge Template
+# Copy this file to {project_id}.yaml and fill in expert knowledge.
+#
+# Severity:   critical | high | medium | low
+# Status:     active | resolved | deferred
+# Trajectory: "closing — ...", "stable — ...", "recurring — ...", "widening — ..."
+#
+# ONLY Layer 1 (Model) and Layer 2 (Serving Architecture) are active tracks
+# in the dashboard. Kernel (L3) and Engineering (L4) notes live in
+# `background_context` as narrative reference.
+
+project:
+  id: "project_id"
+  name: "Display Name"
+  repo: "owner/repo"
+  category: "inference"   # inference | training | tool
+  expert_summary: |
+    Whole-picture narrative from the AMD roadmap lens.
+    What's achieved? What's the strategic gap? Why does it matter in 2026?
+
+# Headline performance comparisons. Keep succinct; use this for context, not depth.
+performance:
+  example_benchmark:
+    status: competitive | significant_gap | nvidia_exclusive_advantage
+    confidence: high
+    notes: Brief one-paragraph finding with hardware context.
+
+# Active tracks, organized by (layer × gap_type).
+# Each track is either a feature gap (capability missing on AMD) or a bug
+# (capability exists but runs wrong / crashes / regresses).
+known_gaps:
+
+  layer1_model:
+
+    features:
+      - id: example_feature_id
+        type: feature
+        title: "Human-readable feature title"
+        gap: "One-line statement of what is missing"
+        severity: high
+        status: active
+        discovered_at: "YYYY-MM-DD"
+        last_verified: "YYYY-MM-DD"
+        technical_detail: |
+          Multi-paragraph deep analysis.
+
+          REQUIRED paragraphs:
+          - What's the concrete state today? (cite issues/PRs)
+          - Why it is a feature, not a bug (classification rationale)
+          - Why AMD should care (roadmap lens — tie to MI355X / MI400 /
+            Helios / FP4 / MoRI / AITER strategy)
+        sources:
+          - url: "https://github.com/..."
+            date: "YYYY-MM-DD"
+            label: "Issue #XXX — description"
+        tracking_issue: "https://github.com/..."
+        trajectory: "stable — no PR yet; agent watches <tracking_issue> for new comments"
+        updates: []   # agent appends findings here; human reviews
+
+    bugs:
+      - id: example_bug_id
+        type: bug
+        title: "Bug title"
+        gap: "One-line bug statement"
+        severity: high
+        status: active
+        discovered_at: "YYYY-MM-DD"
+        last_verified: "YYYY-MM-DD"
+        technical_detail: |
+          - What breaks, on what hardware, in what config?
+          - Why it is a bug, not a feature gap
+          - Why AMD should care
+        sources: []
+        tracking_issue: "https://github.com/..."
+        trajectory: "..."
+        updates: []
+
+  layer2_serving:
+    features: []
+    bugs: []
+
+# Agent focus — what the crawl agent should prioritize when polling this repo
+agent_focus:
+  priority_searches:
+    - "repo:OWNER/REPO <keyword> is:pr merged:>2026-03-01 sort:updated"
+  watch_for:
+    - "Specific PR/issue patterns that would update tracked items"
+  monitor_benchmarks:
+    - url: "..."
+      description: "External benchmark dashboard to cross-reference"
+
+# Deliberately de-scoped — preserved as narrative context, not active tracks
+background_context:
+  descoped_l3_kernel: []
+  descoped_l4_engineering: []
+  known_nvidia_exclusive_unreachable:
+    - "NVFP4 data format — NVIDIA-proprietary"
+    - "NVLink-72 rack-scale — AMD answer lands via MI455X / Helios 2027"
+    - "TRT-LLM engine — NVIDIA-exclusive closed-source"

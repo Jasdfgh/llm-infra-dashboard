@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gap Analysis Deep View — Mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0e17; --card: #111827; --surface: #0d1321;
+  --border: #1e293b; --text: #f1f5f9; --muted: #64748b; --secondary: #94a3b8;
+  --accent: #3b82f6; --green: #22c55e; --yellow: #eab308; --orange: #f97316; --red: #ef4444;
+  --nvidia: #76b900; --amd: #ed1c24;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text); padding:32px; max-width:1200px; margin:0 auto; }
+h1 { font-size:24px; font-weight:700; margin-bottom:8px; }
+.subtitle { color:var(--muted); font-size:14px; margin-bottom:32px; }
+.mono { font-family:'JetBrains Mono',monospace; }
+
+/* Gap Card */
+.gap-card { background:var(--card); border:1px solid var(--border); border-radius:12px; margin-bottom:24px; overflow:hidden; }
+.gap-header { padding:20px 24px; border-bottom:1px solid var(--border); display:flex; align-items:flex-start; gap:16px; }
+.severity-indicator { width:4px; border-radius:2px; align-self:stretch; flex-shrink:0; }
+.severity-critical { background:var(--red); }
+.severity-high { background:var(--orange); }
+.severity-medium { background:var(--yellow); }
+.gap-title-area { flex:1; }
+.gap-layer { font-size:11px; text-transform:uppercase; letter-spacing:1px; color:var(--muted); margin-bottom:4px; }
+.gap-title { font-size:18px; font-weight:600; margin-bottom:6px; }
+.gap-oneliner { font-size:14px; color:var(--secondary); }
+.severity-badge { padding:3px 10px; border-radius:12px; font-size:11px; font-weight:600; text-transform:uppercase; }
+.badge-critical { background:rgba(239,68,68,0.12); color:var(--red); }
+.badge-high { background:rgba(249,115,22,0.12); color:var(--orange); }
+.badge-medium { background:rgba(234,179,8,0.12); color:var(--yellow); }
+.trajectory-badge { padding:3px 10px; border-radius:12px; font-size:11px; font-weight:500; margin-left:8px; }
+.traj-closing { background:rgba(34,197,94,0.1); color:var(--green); }
+.traj-stable { background:rgba(100,116,139,0.15); color:var(--secondary); }
+.traj-widening { background:rgba(239,68,68,0.1); color:var(--red); }
+
+/* Reasoning Chain */
+.reasoning-chain { padding:0 24px 24px; }
+.chain-step { display:flex; gap:16px; padding:16px 0; border-bottom:1px solid rgba(30,41,59,0.4); position:relative; }
+.chain-step:last-child { border-bottom:none; }
+.chain-connector { width:32px; display:flex; flex-direction:column; align-items:center; flex-shrink:0; }
+.chain-dot { width:10px; height:10px; border-radius:50%; border:2px solid var(--border); background:var(--bg); z-index:1; }
+.chain-dot.active { border-color:var(--accent); background:var(--accent); }
+.chain-line { width:2px; flex:1; background:var(--border); margin-top:-2px; }
+.chain-step:last-child .chain-line { display:none; }
+.chain-content { flex:1; min-width:0; }
+.chain-label { font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:var(--muted); margin-bottom:4px; font-weight:600; }
+.chain-text { font-size:13px; line-height:1.6; color:var(--secondary); }
+.chain-text strong { color:var(--text); font-weight:600; }
+.chain-text a { color:var(--accent); text-decoration:none; font-size:12px; }
+.chain-text a:hover { text-decoration:underline; }
+
+/* Evidence Box */
+.evidence-box { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:12px 14px; margin-top:8px; font-size:12px; }
+.evidence-box .mono { font-size:11px; color:var(--muted); }
+.evidence-row { display:flex; gap:8px; margin-bottom:4px; align-items:flex-start; }
+.evidence-icon { width:16px; height:16px; border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:9px; flex-shrink:0; margin-top:2px; }
+.icon-issue { background:rgba(34,197,94,0.15); color:var(--green); }
+.icon-pr { background:rgba(139,92,246,0.15); color:#a78bfa; }
+.icon-benchmark { background:rgba(59,130,246,0.15); color:var(--accent); }
+.icon-blog { background:rgba(249,115,22,0.15); color:var(--orange); }
+
+/* Data Table in chain */
+.eval-table { width:100%; border-collapse:collapse; margin-top:8px; font-size:12px; }
+.eval-table th { text-align:left; padding:6px 10px; color:var(--muted); font-weight:500; border-bottom:1px solid var(--border); font-size:11px; }
+.eval-table td { padding:6px 10px; border-bottom:1px solid rgba(30,41,59,0.3); }
+.eval-table .pass { color:var(--green); font-weight:600; }
+.eval-table .fail { color:var(--red); font-weight:600; }
+
+/* People */
+.people-tag { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:10px; font-size:11px; background:rgba(59,130,246,0.08); color:var(--accent); margin-right:4px; }
+
+/* Section Divider */
+.section-title { font-size:16px; font-weight:600; margin:40px 0 16px; padding-bottom:8px; border-bottom:1px solid var(--border); }
+</style>
+</head>
+<body>
+
+<h1>vLLM — Gap Analysis Deep View</h1>
+<p class="subtitle">每个 gap 展示完整的推理链：宏观信号 → 具体证据 → 技术根因 → 修复进展 → 趋势判断</p>
+
+<!-- ==================== GAP 1: Composability ==================== -->
+<div class="gap-card">
+  <div class="gap-header">
+    <div class="severity-indicator severity-critical"></div>
+    <div class="gap-title-area">
+      <div class="gap-layer">Layer 2 · Serving Architecture</div>
+      <div class="gap-title">FP4 + Disagg + WideEP Composability</div>
+      <div class="gap-oneliner">三种推理优化单独可用，组合使用时性能严重退化 — AMD 的 #1 问题</div>
+    </div>
+    <span class="severity-badge badge-critical">Critical</span>
+    <span class="trajectory-badge traj-stable">Trajectory: Stable</span>
+  </div>
+  
+  <div class="reasoning-chain">
+    <!-- Step 1: Macro Signal -->
+    <div class="chain-step">
+      <div class="chain-connector"><div class="chain-dot active"></div><div class="chain-line"></div></div>
+      <div class="chain-content">
+        <div class="chain-label">宏观信号</div>
+        <div class="chain-text">
+          <strong>SemiAnalysis InferenceX v2</strong> 明确指出：
+          "AMD software is still not meeting the mark... the composability of disagg prefill, 
+          wideEP and FP4 needs significant improvement." 生产级 AI Lab（OpenAI, Anthropic, xAI）
+          全部同时使用 FP4 + disagg + wideEP。
+          <br><a href="https://inferencex.semianalysis.com/blog/inferencex-v2-nvidia-blackwell-vs-amd-vs-hopper">→ InferenceX v2 Report</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2: Quantitative Evidence -->
+    <div class="chain-step">
+      <div class="chain-connector"><div class="chain-dot active"></div><div class="chain-line"></div></div>
+      <div class="chain-content">
+        <div class="chain-label">量化证据</div>
+        <div class="chain-text">
+          <strong>SGLang #20404</strong>：3-node MI355X 集群上 DeepSeek-R1 GSM8K 评测数据：
+        </div>
+        <table class="eval-table">
+          <tr><th>Config</th><th>Model</th><th>DPA</th><th>MTP</th><th>GSM8K</th></tr>
+          <tr><td class="mono">fp4/none</td><td>MXFP4</td><td>off</td><td>off</td><td class="pass">94.6%</td></tr>
+          <tr><td class="mono">fp8/none/no-DPA</td><td>FP8</td><td>off</td><td>off</td><td class="pass">94.3%</td></tr>
+          <tr><td class="mono">fp4/mtp</td><td>MXFP4</td><td>off</td><td><strong>on</strong></td><td class="fail">0.2%</td></tr>
+          <tr><td class="mono">fp8/none/DPA</td><td>FP8</td><td><strong>on</strong></td><td>off</td><td class="fail">0.0%</td></tr>
+        </table>
+        <div class="evidence-box">
+          <div class="evidence-row"><div class="evidence-icon icon-issue">I</div><div>DPA 在 EP8 开启后准确率从 94.3% 直降至 0.0%，隔离测试确认 DPA 是唯一变量</div></div>
+          <div class="evidence-row"><div class="evidence-icon icon-benchmark">B</div><div><a href="https://github.com/SemiAnalysisAI/InferenceX/actions/runs/22972314055">CI artifacts with full eval outputs</a></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3: Root Cause -->
+    <div class="chain-step">
+      <div class="chain-connector"><div class="chain-dot active"></div><div class="chain-line"></div></div>
+      <div class="chain-content">
+        <div class="chain-label">技术根因链</div>
+        <div class="chain-text">
+          不是单一 bug，而是多层问题叠加：
+          <br><br>
+          <strong>① FP8 格式差异 →</strong> AMD 使用 <code class="mono">f8e4m3fnuz</code>，fused MoE kernel 的 QuantKey 不支持 → 
+          整条 fused activation-quantization path 被 disable（PR #39387）→ 走非 fused 慢路径
+          <br><br>
+          <strong>② MoRI-EP 通信开销 →</strong> FP4 GEMM 单节点可用（AITER 493 shapes, 5806 TFLOPS on MI355X），
+          但跨节点 EP 通信时数据格式转换和 all-to-all 开销未被优化
+          <br><br>
+          <strong>③ Fork vs Upstream 差距 →</strong> AMD engineer 说 SGLang main 上 DPA 不能复现，
+          但 InferenceX benchmark 用的是 fork image → fix 在 main 但 fork 上没有
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 4: Who's Working on It -->
+    <div class="chain-step">
+      <div class="chain-connector"><div class="chain-dot active"></div><div class="chain-line"></div></div>
+      <div class="chain-content">
+        <div class="chain-label">修复进展</div>
+        <div class="chain-text">
+          <span class="people-tag">@billishyahao</span> (AMD) 回复 #20404: "not able to reproduce on latest sglang main"
+          <br><br>
+          <span class="people-tag">@functionstackx</span> (SemiAnalysis) 追问: "can u test on the actual images u r submitting, not sglang main?"
+          <br><br>
+          SemiAnalysis 建议：<em>"re-allocate engineering resources away from pet single node projects like ATOM towards fixing composability"</em>
+          <br><br>
+          AMD 被告知需要聚焦：FP4 + 分布式推理的 composability，而不是单节点优化。
+        </div>
+        <div class="evidence-box">
+          <div class="evidence-row"><div class="evidence-icon icon-issue">I</div><div><a href="https://github.com/sgl-project/sglang/issues/20404">SGLang #20404 — full discussion</a></div></div>
+          <div class="evidence-row"><div class="evidence-icon icon-pr">P</div><div><a href="https://github.com/vllm-project/vllm/pull/39387">vLLM #39387 — fused MoE path disabled</a></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 5: Trajectory -->
+    <div class="chain-step">
+      <div class="chain-connector"><div class="chain-dot"></div></div>
+      <div class="chain-content">
+        <div class="chain-label">趋势判断</div>
+        <div class="chain-text">
+          <strong>Stable (未在收窄)</strong> — 这不是一个可以通过单个 PR 修复的问题。需要系统性地解决：
+          FP8 fnuz 格式的 fused kernel 支持、MoRI EP 通信效率、fork 到 upstream 的回合。
+          AMD 承认问题存在，SemiAnalysis 持续施压，但解决需要多个季度的工程投入。
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== GAP 2: ATOM / TRT-LLM ==================== -->
+<div class="gap-card">
+  <div class="gap-header">
+    <div class="severity-indicator severity-high"></div>
+    <div class="gap-title-area">
+      <div class="gap-layer">Layer 2 · Serving Architecture</div>
+      <div class="gap-title">TRT-LLM Exclusive Performance / ATOM 被拒</div>
+      <div class="gap-oneliner">NVIDIA TRT-LLM 比 vLLM/SGLang 快 35-50%；AMD ATOM 被 vLLM 社区拒绝进入主线</div>
+    </div>
+    <span class="severity-badge badge-high">High</span>
+    <span class="trajectory-badge traj-stable">Trajectory: Stable</span>
+  </div>
+  
+  <div class="reasoning-chain">
+    <div class="chain-step">
+      <div class="chain-connector"><div class="chain-dot active"></div><div class="chain-line"></div></div>
+      <div class="chain-content">
+        <div class="chain-label">宏观信号</div>
+        <div class="chain-text">
+          TRT-LLM 全球生产环境服务 billions of tokens/hour（TogetherAI 等）。
+          <strong>H100 Llama 4 70B FP8: TRT-LLM 4,800 tok/s vs vLLM 3,400 tok/s</strong> — 同硬件 35-50% 差距。
+          <br>B200 DeepSeek R1: TRT-LLM 达到 5,393 tok/s/GPU。
+          <br><a href="https://nvidia.github.io/TensorRT-LLM/blogs/tech_blog/blog1_Pushing_Latency_Boundaries_Optimizing_DeepSeek-R1_Performance_on_NVIDIA_B200_GPUs.html">→ NVIDIA TRT-LLM Blog</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="chain-step">
+      <div class="chain-connector"><div class="chain-dot active"></div><div class="chain-line"></div></div>
+      <div class="chain-content">
+        <div class="chain-label">AMD 应对 — ATOM RFC 被拒</div>
+        <div class="chain-text">
+          AMD 提交 RFC #33478（2026-01-29）：将 ATOM 作为 vLLM model implementation backend。
+          <br><br>
+          <strong>vLLM lead maintainer @simon-mo 拒绝</strong>（2026-02-03）：
+          <br><em>"The core value proposition of vLLM is that the SAME model implementation works across all hardware SKUs.
+          I would not be against a vllm-atom plugin maintained out-of-tree. However, I am against putting this in-tree."</em>
+          <br><br>
+          推荐路径：<strong>ATOM 作为 speed-of-light reference → 提取最优 kernels → upstream 到 vLLM</strong>
+          <br><br>
+          AMD @sunway513 接受（2026-02-05）："We will reframe the RFC to focus on plugin-oriented approach."
+          <br>RFC 于 2026-02-06 正式关闭。
+        </div>
+        <div class="evidence-box">
+          <div class="evidence-row"><div class="evidence-icon icon-issue">I</div><div><a href="https://github.com/vllm-project/vllm/issues/33478">vLLM #33478 — ATOM RFC + community discussion</a></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="chain-step">
+      <div class="chain-connector"><div class="chain-dot active"></div><div class="chain-line"></div></div>
+      <div class="chain-content">
+        <div class="chain-label">第三方评估</div>
+        <div class="chain-text">
+          <strong>SemiAnalysis InferenceX v2：</strong>
+          <br><em>"ATOM has zero customers in production... lacking tool parsing, wideEP, disagg, KV offloading.
+          We would encourage AMD management to re-deploy these 10x engineers towards vLLM and SGLang."</em>
+          <br><br>
+          vLLM maintainer @mgoin 质疑 ATOM benchmark（2026-02-03）：
+          <em>"Why is the speedup so small, just ~7%? The ATOM README claims 2-3x."</em>
+        </div>
+      </div>
+    </div>
+
+    <div class="chain-step">
+      <div class="chain-connector"><div class="chain-dot"></div></div>
+      <div class="chain-content">
+        <div class="chain-label">趋势判断</div>
+        <div class="chain-text">
+          <strong>Stable (结构性差距)</strong> — AMD 无法通过独立引擎追平 TRT-LLM。
+          社区共识是 upstream kernel 到 vLLM/SGLang。这条路更慢但可持续。
+          只要 NVIDIA 继续投资 TRT-LLM，这个差距就会持续存在。
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== GAP 3: MoRI Integration ==================== -->
+<div class="gap-card">
+  <div class="gap-header">
+    <div class="severity-indicator severity-high"></div>
+    <div class="gap-title-area">
+      <div class="gap-layer">Layer 2 · Serving Architecture</div>
+      <div class="gap-title">vLLM Router MoRI Integration</div>
+      <div class="gap-oneliner">AMD 的 disagg KV 传输库 MoRI 在 SGLang 可用但 vLLM router 不支持</div>
+    </div>
+    <span class="severity-badge badge-high">High</span>
+    <span class="trajectory-badge traj-closing">Trajectory: Closing ↑</span>
+  </div>
+  
+  <div class="reasoning-chain">
+    <div class="chain-step">
+      <div class="chain-connector"><div class="chain-dot active"></div><div class="chain-line"></div></div>
+      <div class="chain-content">
+        <div class="chain-label">具体问题</div>
+        <div class="chain-text">
+          vLLM router 原生支持 <strong>NIXL</strong>（NVIDIA 的 KV cache connector）但不支持 <strong>MoRI</strong>（AMD）。
+          <br>CUDA 用户：docker pull → disagg 即用
+          <br>ROCm 用户：只能用 RIXL（NIXL fork, 不在 Docker 里）或 MORIIO toy proxy（非生产级）
+          <br><a href="https://github.com/vllm-project/vllm/issues/38692">→ Issue #38692</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="chain-step">
+      <div class="chain-connector"><div class="chain-dot active"></div><div class="chain-line"></div></div>
+      <div class="chain-content">
+        <div class="chain-label">修复进展（活跃）</div>
+        <div class="chain-text">
+          <span class="people-tag">@mpashkovskii</span> (AMD, April 1): 2-step plan — 短期 dev image + 长期 harmonize KV backends
+          <br><br>
+          <span class="people-tag">@simondanielsson</span> (AMD, April 11): <strong>3 PRs published:</strong>
+          <br>① <a href="https://github.com/vllm-project/vllm/pull/39565">vllm#39565</a> — MoRI connector in vLLM
+          <br>② <a href="https://github.com/vllm-project/router/pull/138">router#138</a> — Router support
+          <br>③ <a href="https://github.com/vllm-project/router/pull/139">router#139</a> — Alternative impl
+          <br><br>
+          <strong>First benchmarks confirm functionality on MI300/350</strong>（April 11）
+          <br><br>
+          <span class="people-tag">@functionstackx</span> (April 11): 请求 nightly MoRI 镜像
+          <br><span class="people-tag">@mpashkovskii</span> (April 15): "I'll take a look into image building process"
+        </div>
+        <div class="evidence-box">
+          <div class="evidence-row"><div class="evidence-icon icon-pr">P</div><div><a href="https://github.com/vllm-project/vllm/pull/39565">vllm#39565 — MoRI IO connector alignment</a></div></div>
+          <div class="evidence-row"><div class="evidence-icon icon-pr">P</div><div><a href="https://github.com/vllm-project/vllm/pull/38813">vllm#38813 — WIP MoRI alignment</a></div></div>
+          <div class="evidence-row"><div class="evidence-icon icon-issue">I</div><div>Remaining: MoRI requires source build (#38687); no nightly Docker images yet</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="chain-step">
+      <div class="chain-connector"><div class="chain-dot"></div></div>
+      <div class="chain-content">
+        <div class="chain-label">趋势判断</div>
+        <div class="chain-text">
+          <strong>Closing ↑</strong> — 3 PRs 已发布且 benchmark 确认功能可用。
+          剩余工作是 Docker image 分发和 CI 测试。预计 1-2 个月内可解决核心功能。
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p style="text-align:center; color:var(--muted); font-size:12px; margin-top:32px;">
+  Mockup — Gap Analysis Deep View with Reasoning Chain
+  <br>每个 gap 展示完整的推理链路，从宏观信号到具体证据到技术根因到修复进展
+</p>
+
+</body>
+</html>

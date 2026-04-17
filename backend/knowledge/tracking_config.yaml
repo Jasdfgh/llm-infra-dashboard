@@ -1,0 +1,73 @@
+# Project Tracking Configuration
+# Defines precise search/filter rules for each tracked project.
+# Learned from ROCm/AI-Frameworks-Dashboard's projects.yaml approach.
+# Agent uses these rules for targeted data collection instead of broad searches.
+
+projects:
+  vllm:
+    repo: "vllm-project/vllm"
+    role: "inference_framework"
+    track_labels: ["rocm", "amd"]
+    track_keywords: ["ROCm", "AMD", "HIP", "MI300", "MI355", "AITER", "MoRI"]
+    keyword_scope: "title"
+    track_authors: []
+    depends_on: ["aiter", "mori", "triton"]
+    gap_search_queries:
+      - "rocm OR hip is:pr is:merged merged:>30d sort:updated"
+      - "rocm regression is:issue is:open sort:updated"
+      - "mxfp4 OR fp4 rocm OR amd sort:updated"
+      - "disaggregated rocm sort:updated"
+      - "expert parallelism rocm sort:updated"
+
+  sglang:
+    repo: "sgl-project/sglang"
+    role: "inference_framework"
+    track_labels: ["rocm", "amd", "AMD"]
+    track_keywords: ["ROCm", "AMD", "HIP", "MI300", "MI355", "AITER", "MoRI"]
+    keyword_scope: "title"
+    track_authors: []
+    depends_on: ["aiter", "mori", "triton"]
+    gap_search_queries:
+      - "[AMD] is:pr is:merged sort:updated"
+      - "mori OR MoRI is:pr sort:updated"
+      - "aiter is:issue is:open sort:updated"
+      - "disagg rocm OR amd is:issue sort:updated"
+      - "FA3 OR flash_attention_3 rocm sort:updated"
+      - "parity CUDA is:issue sort:updated"
+
+  aiter:
+    repo: "ROCm/aiter"
+    role: "amd_kernel_library"
+    track_labels: []
+    track_keywords: []
+    track_authors: []
+    depends_on: ["triton"]
+    note: "AMD's core AI kernel library — all AMD attention/GEMM/MoE paths depend on this"
+
+  mori:
+    repo: "ROCm/mori"
+    role: "amd_communication_library"
+    track_labels: []
+    track_keywords: []
+    track_authors: []
+    depends_on: []
+    note: "AMD's disaggregated serving + expert parallelism communication library"
+
+  triton:
+    repo: "triton-lang/triton"
+    role: "kernel_compiler"
+    track_labels: []
+    track_keywords: ["[AMD]"]
+    keyword_scope: "title"
+    track_authors: []
+    note: "Cross-platform kernel compiler — AMD backend quality matters"
+
+# Data collection method
+collection:
+  method: "gh_cli"  # Use `gh api` CLI for reliability
+  schedule: "daily"
+  actions:
+    - "Check tracking_issues for new comments on all active gaps"
+    - "Search for new issues/PRs matching track_labels/keywords"
+    - "Classify new signals against existing gap taxonomy using LLM"
+    - "Append to updates list, mark as pending review"
