@@ -1,0 +1,77 @@
+{
+  "signal_type": "pull_request",
+  "repo": "vllm-project/vllm",
+  "number": 39616,
+  "title": "[ROCm][Feature] Enable AITER MLA attention backend to work with Eagle3 speculative decoding on ROCm",
+  "state": "closed",
+  "merged": true,
+  "merged_at": "2026-04-20T14:44:44Z",
+  "author": "larryli2-amd",
+  "labels": [
+    "documentation",
+    "rocm",
+    "ready",
+    "v1"
+  ],
+  "created_at": "2026-04-12T07:27:00Z",
+  "html_url": "https://github.com/vllm-project/vllm/pull/39616",
+  "body_text": "## Summary                                                                                      \n                                                                                                  \n  Enable AITER MLA attention backend to work with Eagle3 speculative decoding on ROCm.            \n                                                                                                  \n  AITER MLA is the fastest MLA attention backend on AMD MI300X/MI355X GPUs (using AMD's ASM       \n  kernels via the aiter library). However, it currently cannot be used with speculative decoding\n  methods like Eagle3 due to a `kernel_block_size` conflict:                                      \n                                                                                                \n  - **AITER MLA** declares `get_supported_kernel_block_sizes() = [1]`                             \n  - **Eagle3 draft model** (flash_attn) requires `block_size = MultipleOf(16)`                    \n  - Both share the same KV cache group, so `select_common_block_size()` fails — no block size      satisfies both constraints                                                                      \n                                                 \n  This means users must choose between AITER MLA (fast decode, no spec-dec) or a slower backend   \n  (spec-dec works but lower baseline performance). This PR removes that limitation.               \n                                                                                                  \n  ## Key Insight                                                                                  \n                                                 \n  The aiter MLA decode kernel always operates with `page_size=1` internally — the vLLM wrapper    \n  flattens `kv_buffer` via `.view(-1, 1, 1, head_size)` before calling the ASM kernel. The kernel\n  never sees multi-token pages. So AITER MLA can work with any `kernel_block_size` — we just need \n  to expand block-level indices into per-token flat indices in the metadata builder.            \n                                                                                                  \n  ## Changes                                                                                      \n                                                                                                  \n  All changes are in a single file: `vllm/v1/attention/backends/mla/rocm_aiter_mla.py`            \n                                                 \n  1. **`get_supported_kernel_block_sizes()`**: `[1]` → `[MultipleOf(1)]` — allows any block size,  enabling compatibility with Eagle3's flash_attn (block_size=16)                                 \n                        \n  2. **Store `kernel_block_size`**: `self.kernel_block_size = kv_cache_spec.block_size` in the     metadata builder for use during index expansion                                                 \n                                                 \n  3. **`_copy_page_indices_kernel` → `_expand_page_indices_kernel`**: Rewrote the Triton kernel to expand block-level entries into per-token flat indices. When `kernel_block_size=1` (no spec-dec), behavior is mathematically identical to the original — no regression. When            `kernel_block_size=K` (e.g. 16 with Eagle3), block table entry `b` covering K tokens is expanded to flat indices `b*K, b*K+1, ..., b*K+(K-1)`.\n\n  4. **Conditional `get_mla_metadata_v1`**: Only called for `max_qo_len == 1` (single-token decode steps). The result is tracked via `has_persistent_metadata` on the decode metadata object (not builder instance state), and passed through to `forward_mqa` via the metadata dataclass. During Eagle3 verification, `qseqlen = num_speculative_tokens + 1 > 1`, and  `get_mla_metadata_v1` internally calls `get_heuristic_kernel_mla` which crashes for `qseqlen >   1`. When skipped, the kernel falls back to computing metadata internally.   ## Benchmark Results                                                                            \n   \n  Tested on AMD MI355X (TP=4) with Kimi-K2.5-MXFP4 https://huggingface.co/amd/Kimi-K2.5-MXFP4 (MLA, 64 heads) + Eagle3 draft model https://huggingface.co/lightseekorg/kimi-k2.5-eagle3,          \n  ISL=1024/OSL=1024, random dataset, 10 seeds per config:                                       \n                                                                                                  \n  | Config | Baseline (tok/s/gpu) | Eagle3 spec7 (tok/s/gpu) | Speedup |                          \n  |---|---|---|---|                      \n  | MML=2248, conc=16 | 206.1 ± 3.7 | 363.7 ± 20.2 | **+76.5%** |                                 \n  | MML=4096, conc=16 | 204.2 ± 10.9 | 353.4 ± 27.2 | **+73.0%** |                                \n                                                                                                  \n  - Baseline performance (no spec-dec) is unchanged — no regression                               \n  - Eagle3 spec7 delivers +73-77% throughput improvement with AITER MLA                           \n                                                                                                  \n  ## Output Quality                                                                               \n                                                                                                  \n  Verified with 10 diverse prompts (geography, math, coding, translation, etc.) using             \n  `/v1/chat/completions` API at temperature=0. Eagle3 spec7 output quality matches baseline across\n   all prompts. Spec-dec acceptance rates are in the normal range (35-55% depending on workload). \n                                                                                                \n  ## Test Plan                           \n\n  - [x] Baseline (no spec-dec) throughput unchanged — no regression                               \n  - [x] Eagle3 spec7 works correctly with AITER MLA backend\n  - [x] Output quality: Eagle3 output matches baseline (10 prompts, chat API)                     \n  - [x] Normal spec-dec acceptance rates (35-55%)                                                 \n  - [x] Throughput: +73-77% speedup with Eagle3 spec7                                             \n                                                                                                  \n  ## Known Limitation                                                                           \n                                                                                                  \n  The aiter ASM kernel has a pre-existing issue with non-power-of-2 `max_qo_len` values (e.g.,    \n  `num_speculative_tokens=5` → `qseqlen=6`), producing incorrect attention output. This is not \n  introduced by this PR — it exists in the upstream aiter kernel. Only `num_speculative_tokens`   \n  values where `spec+1` is a power of 2 (1, 3, 7, 15) work correctly. We are reporting this issue (https://github.com/ROCm/aiter/issues/2720) to the\n   AMD aiter kernel team.",
+  "body_token_estimate": 1755,
+  "extracted_references": {
+    "pr_numbers": [],
+    "issue_numbers": [
+      2720
+    ],
+    "external_urls": [
+      "https://github.com/ROCm/aiter/issues/2720",
+      "https://huggingface.co/amd/Kimi-K2.5-MXFP4",
+      "https://huggingface.co/lightseekorg/kimi-k2.5-eagle3"
+    ]
+  },
+  "changed_files": {
+    "total": 2,
+    "additions": 130,
+    "deletions": 58,
+    "files": [
+      {
+        "filename": "docs/design/attention_backends.md",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1
+      },
+      {
+        "filename": "vllm/v1/attention/backends/mla/rocm_aiter_mla.py",
+        "status": "modified",
+        "additions": 129,
+        "deletions": 57
+      }
+    ],
+    "rocm_specific": [
+      "vllm/v1/attention/backends/mla/rocm_aiter_mla.py"
+    ],
+    "cuda_specific": [],
+    "shared": [
+      "docs/design/attention_backends.md"
+    ]
+  },
+  "review_comments": [
+    {
+      "author": "gemini-code-assist[bot]",
+      "body_preview": "The attribute `_has_persistent_metadata` is initialized to `False` at the start of every `_build_decode` call. However, since `_build_decode` is called by `super().build()`, and `AiterMLAMetadataBuilder.build` relies on this attribute, there is a potent",
+      "created_at": "2026-04-12T07:32:06Z"
+    },
+    {
+      "author": "larryli2-amd",
+      "body_preview": "Thank you for your comment. Done.",
+      "created_at": "2026-04-13T06:26:55Z"
+    },
+    {
+      "author": "tjtanaa",
+      "body_preview": "NITS: This block of comment is the same as the doc string of `_expand_page_indices_kernel` , let's remove this to make is less verbose.",
+      "created_at": "2026-04-19T14:32:02Z"
+    }
+  ],
+  "raw_size_bytes": 13100,
+  "cleaned_size_bytes": 9418,
+  "compression_ratio": "28.1%"
+}

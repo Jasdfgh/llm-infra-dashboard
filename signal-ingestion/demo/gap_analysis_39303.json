@@ -1,0 +1,235 @@
+{
+  "meta": {
+    "pipeline_version": "0.1.0-demo",
+    "run_id": "demo-2026-04-22-001",
+    "completed_at": "2026-04-22T03:30:00Z",
+    "runtime": "cursor-cli-headless",
+    "model": "claude-opus-4.6",
+    "total_workers": 4,
+    "total_api_calls": 12,
+    "processing_time_seconds": 45
+  },
+
+  "gap": {
+    "id": "aiter_mla_sparse_mi355x_ctx2k",
+    "title": "AITER MLA Sparse Kernel Regression on MI355X (context > 2048)",
+    "type": "bug",
+    "severity": "high",
+    "project": "vllm",
+    "repo": "vllm-project/vllm",
+    "tracking_issue": "https://github.com/vllm-project/vllm/issues/39303",
+    "last_verified": "2026-04-16",
+    "previous_status": "open",
+    "previous_trajectory": "stable"
+  },
+
+  "current_state": {
+    "status": "closed",
+    "closed_at": "2026-04-16T14:26:57Z",
+    "closed_by": "hongxiayang",
+    "labels": ["bug", "rocm"],
+    "comment_count": 11,
+    "fix_pr": {
+      "number": 39509,
+      "title": "[ROCm] [AITER] Revert AITER version to v0.1.10.post3",
+      "author": "tjtanaa",
+      "state": "merged",
+      "merged_at": "2026-04-10T16:25:52Z",
+      "url": "https://github.com/vllm-project/vllm/pull/39509",
+      "strategy": "version_revert",
+      "note": "回退 aiter 从 v0.1.12 到 v0.1.10.post3，不是正面修复 kernel bug"
+    }
+  },
+
+  "data_chain": {
+    "description": "从 GitHub 获取到的原始数据链路，每一步都有来源可追溯",
+    "steps": [
+      {
+        "step": 1,
+        "action": "get_issue",
+        "tool": "github_mcp",
+        "target": "vllm-project/vllm#39303",
+        "result": "issue closed on 2026-04-16 by hongxiayang, 11 comments"
+      },
+      {
+        "step": 2,
+        "action": "fetch_comments",
+        "tool": "fetch_mcp → GitHub REST API",
+        "target": "https://api.github.com/repos/vllm-project/vllm/issues/39303/comments",
+        "result": "11 comments, timeline: report → triage → workaround → fix PR → verification → close"
+      },
+      {
+        "step": 3,
+        "action": "get_pull_request",
+        "tool": "github_mcp",
+        "target": "vllm-project/vllm#39509",
+        "result": "PR merged 2026-04-10, reverts aiter to v0.1.10.post3"
+      },
+      {
+        "step": 4,
+        "action": "search_related",
+        "tool": "github_mcp search_issues",
+        "target": "repo:vllm-project/vllm AITER MLA is:pr merged:>2026-04-14",
+        "result": "3 related PRs found: #39616 (Eagle3+MLA), #39242 (RMS norm fusion), #40386 (hotfix)"
+      }
+    ]
+  },
+
+  "timeline": [
+    {
+      "date": "2026-04-03",
+      "event": "regression_window_start",
+      "detail": "旧 nightly (vLLM 0.18.2) 正常工作，新 nightly 引入 aiter v0.1.12"
+    },
+    {
+      "date": "2026-04-08",
+      "event": "bug_reported",
+      "detail": "用户 ghpu 提交 issue #39303，附带完整复现脚本和根因分析",
+      "url": "https://github.com/vllm-project/vllm/issues/39303"
+    },
+    {
+      "date": "2026-04-08",
+      "event": "triage",
+      "detail": "hongxiayang（vLLM ROCm maintainer）开始响应，询问复现环境"
+    },
+    {
+      "date": "2026-04-08",
+      "event": "root_cause_identified",
+      "detail": "ghpu 确认 regression 在 aiter 0.1.10.post2 → 0.1.12 之间，官方 nightly 不受影响"
+    },
+    {
+      "date": "2026-04-10",
+      "event": "fix_pr_merged",
+      "detail": "tjtanaa 提交 PR #39509 回退 aiter 到 v0.1.10.post3，同日合并",
+      "url": "https://github.com/vllm-project/vllm/pull/39509",
+      "resolution_time_days": 2
+    },
+    {
+      "date": "2026-04-14",
+      "event": "verification_requested",
+      "detail": "hongxiayang 请 ghpu 验证 PR #39509 是否解决了问题"
+    },
+    {
+      "date": "2026-04-16",
+      "event": "fix_confirmed_and_closed",
+      "detail": "ghpu 确认 'the problem is fixed with PR #39509. Thanks!'，issue 关闭",
+      "total_lifecycle_days": 8
+    },
+    {
+      "date": "2026-04-20",
+      "event": "related_pr_merged",
+      "detail": "后续相关优化 PR 合并：#39616 (AITER MLA + Eagle3 投机解码, +73% 吞吐), #39242 (MLA RMS norm 融合), #40386 (兼容性热修复)",
+      "note": "说明 AMD 团队在 MLA 方向持续投入"
+    }
+  ],
+
+  "reasoning_chain": {
+    "observations": [
+      {
+        "id": "obs_1",
+        "type": "status_change",
+        "fact": "Issue #39303 已从 open → closed（2026-04-16），reporter 确认修复",
+        "evidence": "Worker: tracking_issue_check → current_state.status = closed, comment #11 by ghpu: 'the problem is fixed'",
+        "date": "2026-04-16"
+      },
+      {
+        "id": "obs_2",
+        "type": "status_change",
+        "fact": "修复策略是版本回退（aiter v0.1.12 → v0.1.10.post3），不是正面修复 kernel bug",
+        "evidence": "Worker: pr_analysis → PR #39509 title: 'Revert AITER version', body mentions ROCm/aiter#2691 'tag is moving'",
+        "date": "2026-04-10"
+      },
+      {
+        "id": "obs_3",
+        "type": "new_discovery",
+        "fact": "AITER 上游 (ROCm/aiter) 的 v0.1.12 tag 不稳定，且有新的 kernel 正确性问题 (#2720: 非 2 的幂次 qo_len)",
+        "evidence": "Worker: pr_analysis → PR #39616 body mentions ROCm/aiter#2720 as known limitation",
+        "date": "2026-04-20"
+      },
+      {
+        "id": "obs_4",
+        "type": "trajectory_shift",
+        "fact": "AMD 团队在 MLA 方向持续投入：一周内合并 3 个相关 PR（Eagle3+MLA 投机解码、RMS norm 融合、兼容性热修复）",
+        "evidence": "Worker: keyword_search → 3 merged PRs: #39616, #39242, #40386",
+        "date": "2026-04-20"
+      }
+    ],
+
+    "analyses": [
+      {
+        "id": "ana_1",
+        "observation_ids": ["obs_1", "obs_2"],
+        "question": "这个 bug 真的解决了吗？还是只是暂时绕过了？",
+        "analysis": "Bug 本身通过版本回退绕过，不是正面修复。上游 aiter v0.1.12 的 kernel bug 仍然存在（只是不再使用该版本）。当 vLLM 未来需要升级 aiter 时（比如为了新功能），这个 bug 可能复现。修复策略是'回退到已知好版本'，属于临时解而非根治。",
+        "confidence": "high",
+        "caveats": "无法直接搜索 ROCm/aiter（私有仓库），不确定上游是否已独立修复该 kernel bug"
+      },
+      {
+        "id": "ana_2",
+        "observation_ids": ["obs_3", "obs_4"],
+        "question": "AMD 在 MLA 方向的整体态势如何？",
+        "analysis": "积极信号：一周内 3 个 MLA 相关 PR 合并，其中 Eagle3+MLA 投机解码带来 +73% 吞吐提升，显示 AMD 在 DeepSeek-style MLA 架构上的深度投入。但 aiter 上游不稳定（tag 漂移、新 kernel bug #2720）是持续风险。MI355X 上的 MLA 能力在快速增长，但稳定性仍需关注。",
+        "confidence": "medium",
+        "caveats": "无法直接观测 aiter 仓库活动，分析基于 vllm 侧的间接引用"
+      }
+    ],
+
+    "strategic_judgments": [
+      {
+        "id": "judge_1",
+        "analysis_ids": ["ana_1"],
+        "judgment": "此 gap 应从 'active/high' 降级为 'resolved-with-caveat/medium'：直接问题已修，但修复方式（版本回退）意味着 aiter 升级时有回归风险",
+        "priority": "medium",
+        "recommended_action": "update_trajectory",
+        "action_detail": {
+          "gap_id": "aiter_mla_sparse_mi355x_ctx2k",
+          "old_status": "active",
+          "new_status": "resolved_with_caveat",
+          "old_trajectory": "stable",
+          "new_trajectory": "closing — fix via version revert (PR #39509), but upstream kernel bug may resurface on aiter upgrade",
+          "watch_for": "vLLM PR upgrading aiter beyond v0.1.10.post3"
+        }
+      },
+      {
+        "id": "judge_2",
+        "analysis_ids": ["ana_2"],
+        "judgment": "AMD 在 MLA 方向势头良好（3 PRs/周），但 aiter 上游稳定性是系统性风险，建议新增一个追踪项",
+        "priority": "high",
+        "recommended_action": "add_new_gap",
+        "action_detail": {
+          "suggested_gap_id": "aiter_upstream_stability",
+          "suggested_title": "AITER Upstream Version Stability (tag drift, kernel correctness regressions)",
+          "rationale": "v0.1.12 tag 漂移 + 多个已知 kernel bug (#2691, #2720) 暴露了上游依赖风险"
+        }
+      }
+    ],
+
+    "strategic_summary": {
+      "headline": "AITER MLA sparse regression 已关闭（8 天生命周期），但修复是版本回退非根治；AMD MLA 方向投入强劲（3 PRs/周），但 aiter 上游稳定性是新的系统性风险",
+      "gaps_closing": ["aiter_mla_sparse_mi355x_ctx2k (closed via version revert)"],
+      "gaps_widening": [],
+      "gaps_new": ["[建议] aiter_upstream_stability (tag drift + kernel bugs)"],
+      "nvidia_moves": [],
+      "top_priority": "监控 vLLM 何时升级 aiter 到 v0.1.12+ —— 那时 MLA sparse regression 可能复现"
+    }
+  },
+
+  "competitive_context": {
+    "amd_resolution_speed": {
+      "bug_reported": "2026-04-08",
+      "fix_pr_merged": "2026-04-10",
+      "user_confirmed": "2026-04-16",
+      "total_days": 8,
+      "assessment": "AMD（tjtanaa/hongxiayang）在 2 天内提交 fix PR，8 天完成全流程。响应速度 reasonable。"
+    },
+    "amd_mla_momentum": {
+      "prs_merged_this_week": 3,
+      "key_improvements": [
+        "Eagle3 + MLA 投机解码 (+73% throughput on MI355X)",
+        "MLA dual RMS norm fusion (DeepSeek/Kimi-K2)",
+        "Compatibility hotfix for older AITer versions"
+      ],
+      "assessment": "AMD 在 MLA 方向投入活跃，MI355X 上的 MLA 路径正在快速成熟"
+    }
+  }
+}

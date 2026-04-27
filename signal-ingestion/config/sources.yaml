@@ -1,0 +1,55 @@
+# ============================================================================
+# Data source configuration — Module 1 ingestion targets
+# ============================================================================
+# MVP (4/24): only vllm-project/vllm with rocm label.
+# Future: add sglang, ROCm/aiter, triton, etc. — zero code changes, just add here.
+# See design/module_1_3_architecture.md D6.
+
+github:
+  api_base: "https://api.github.com"
+  api_version: "2022-11-28"
+
+  # Rate limit policy (see D6.3 + github_mcp_investigation.md §9)
+  rate_limit:
+    rest_per_hour: 5000       # Personal Access Token
+    search_per_minute: 30     # Search API is the hard bottleneck
+    low_remaining_threshold: 10
+    max_retries: 3
+
+  # Per-repo tracking config. MVP = one repo.
+  repos:
+    - repo: "vllm-project/vllm"
+      priority: P0
+      access: public
+      track_labels: ["rocm"]
+      track_keywords: ["ROCm", "AMD", "MI300", "MI350", "gfx950", "aiter"]
+      keyword_scope: "title"
+      exclude_keywords: []
+      include_comments: true
+      max_comments_per_issue: 100
+      deep_scan_threshold: 5   # auto deep-fetch if comment_count changed by this much
+      schedule:
+        incremental: "0 */2 * * *"   # every 2h
+        full: "0 2 * * *"            # daily 2am
+        discovery: "0 */4 * * *"     # every 4h
+
+    # --- future repos (commented out for MVP) ---
+    # - repo: "sgl-project/sglang"
+    #   priority: P0
+    #   access: public
+    #   track_labels: ["rocm", "amd"]
+    # - repo: "ROCm/aiter"
+    #   priority: P1
+    #   access: private          # Search API returns 422; requires repo scope
+    #   fallback: manual
+
+# Normalizer config
+normalizer:
+  # Body truncation (0 = no truncation) — MVP keeps full body per D2.1 ("完整 body，不截断")
+  body_max_chars: 0
+  comment_body_max_chars: 0
+
+# Change detection config (see D5)
+change_detection:
+  body_edit_meaningful_threshold: 50   # <50 char diff = typo noise
+  include_assignee_changes: false      # noise, not meaningful
