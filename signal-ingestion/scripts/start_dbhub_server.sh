@@ -3,7 +3,7 @@
 # Start dbhub as an HTTP MCP server for internal network access.
 #
 # Usage:
-#   bash scripts/start_dbhub_server.sh          # start (default port 8080)
+#   bash scripts/start_dbhub_server.sh          # start (default port 8081)
 #   bash scripts/start_dbhub_server.sh stop      # stop
 #   bash scripts/start_dbhub_server.sh status    # check if running
 #   bash scripts/start_dbhub_server.sh restart    # stop + start
@@ -12,9 +12,13 @@
 
 set -euo pipefail
 
-PROJ="/home/yaywang/my-llm-infra-dashboard"
-NODE="/home/yaywang/.nvm/versions/node/v24.14.0/bin/node"
-DBHUB_ENTRY="${DBHUB_ENTRY:-$(find /home/yaywang/.nvm -name index.js -path '*/dbhub/dist/*' 2>/dev/null | head -1)}"
+PROJ="$(cd "$(dirname "$0")/.." && pwd)"
+if [ ! -d "$PROJ/src" ] || [ ! -f "$PROJ/requirements.txt" ]; then
+    echo "ERROR: Invalid project root: $PROJ" >&2
+    exit 1
+fi
+NODE="${NODE:-$(which node 2>/dev/null || echo "node")}"
+DBHUB_ENTRY="${DBHUB_ENTRY:-$(npm root -g 2>/dev/null)/@bytebase/dbhub/dist/index.js}"
 CONFIG="$PROJ/dbhub.toml"
 PORT="${PORT:-8081}"
 LOGFILE="$PROJ/data/dbhub_server.log"
@@ -81,6 +85,12 @@ do_start() {
         echo "ERROR: Node.js v24 not found at $NODE" >&2
         exit 1
     fi
+    NODE_VERSION=$("$NODE" --version 2>/dev/null | sed 's/v\([0-9]*\).*/\1/')
+    if [ -z "$NODE_VERSION" ] || [ "$NODE_VERSION" -lt 24 ] 2>/dev/null; then
+        echo "ERROR: Node.js >= 24 required (found: $("$NODE" --version 2>/dev/null || echo 'none'))" >&2
+        echo "  Install via nvm: nvm install 24 && nvm use 24" >&2
+        exit 1
+    fi
     if [ ! -f "$DBHUB_ENTRY" ]; then
         echo "ERROR: dbhub not found at $DBHUB_ENTRY" >&2
         echo "  Install: $NODE $(dirname $NODE)/npm install -g @bytebase/dbhub@latest" >&2
@@ -92,6 +102,7 @@ do_start() {
     fi
 
     echo "Starting dbhub HTTP on port $PORT..."
+    cd "$PROJ"
     nohup "$NODE" "$DBHUB_ENTRY" \
         --transport http --port "$PORT" \
         --config "$CONFIG" \

@@ -16,7 +16,7 @@
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 echo "GITHUB_PERSONAL_ACCESS_TOKEN=ghp_xxxxx" > .env   # 换成你的 token
-.venv/bin/python -m pytest tests/ -q                    # 276 passed
+.venv/bin/python -m pytest tests/ -q                    # 验证所有测试通过
 ```
 
 首次拉数据：
@@ -47,14 +47,14 @@ echo "GITHUB_PERSONAL_ACCESS_TOKEN=ghp_xxxxx" > .env   # 换成你的 token
 运行 `crontab -e`，添加以下行（路径按实际调整）：
 
 ```cron
-# vllm: 每 2 小时增量同步
-0 */2 * * * cd /home/yaywang/my-llm-infra-dashboard && .venv/bin/python scripts/sync_github.py --repo vllm-project/vllm --labels rocm >> data/sync.log 2>&1
+# vllm: 每 2 小时增量同步（将 <project-root> 替换为实际项目路径）
+0 */2 * * * cd <project-root> && .venv/bin/python scripts/sync_github.py --repo vllm-project/vllm --labels rocm >> data/sync.log 2>&1
 
 # sglang: 每 4 小时增量同步
-0 */4 * * * cd /home/yaywang/my-llm-infra-dashboard && .venv/bin/python scripts/sync_github.py --repo sgl-project/sglang --labels amd >> data/sync.log 2>&1
+0 */4 * * * cd <project-root> && .venv/bin/python scripts/sync_github.py --repo sgl-project/sglang --labels amd >> data/sync.log 2>&1
 
 # vllm: 每天凌晨 2 点全量同步
-0 2 * * * cd /home/yaywang/my-llm-infra-dashboard && .venv/bin/python scripts/sync_github.py --repo vllm-project/vllm --labels rocm --mode full >> data/sync.log 2>&1
+0 2 * * * cd <project-root> && .venv/bin/python scripts/sync_github.py --repo vllm-project/vllm --labels rocm --mode full >> data/sync.log 2>&1
 ```
 
 ### 搜索和查看
@@ -100,21 +100,32 @@ npm install -g @bytebase/dbhub@latest  # 全局安装，自动编译 better-sqli
 
 #### Cursor 配置
 
-将以下加入 `~/.cursor/mcp.json` 的 `mcpServers` 里，重启 Cursor。注意：不能用 `npx`——Cursor 内置 Node v20 不支持 ESM，需指向 nvm v24 的 node 绝对路径：
+将以下加入 `~/.cursor/mcp.json` 的 `mcpServers` 里，重启 Cursor。注意：不能用 `npx`——Cursor 内置 Node v20 不支持 ESM，需指向 nvm v24+ 的 node 绝对路径。
+
+获取占位符的实际值：
+
+```bash
+which node          # → <node-bin>，如 /home/user/.nvm/versions/node/v24.x/bin/node
+npm root -g         # → <global-modules>，如 /home/user/.nvm/versions/node/v24.x/lib/node_modules
+```
+
+将 `<node-bin>`、`<dbhub-entry>`、`<project-root>` 替换为实际路径：
 
 ```json
 "signals-db": {
-  "command": "/home/yaywang/.nvm/versions/node/v24.14.0/bin/node",
+  "command": "<node-bin>",
   "args": [
-    "/home/yaywang/.nvm/versions/node/v24.14.0/lib/node_modules/@bytebase/dbhub/dist/index.js",
+    "<dbhub-entry>",
     "--transport", "stdio",
-    "--config", "/home/yaywang/my-llm-infra-dashboard/dbhub.toml"
+    "--config", "<project-root>/dbhub.toml"
   ],
-  "env": {
-    "PATH": "/home/yaywang/.nvm/versions/node/v24.14.0/bin:/usr/local/bin:/usr/bin:/bin"
-  }
+  "cwd": "<project-root>"
 }
 ```
+
+其中 `<dbhub-entry>` = `<global-modules>/@bytebase/dbhub/dist/index.js`。
+
+> **重要**：`cwd` 必须设为项目根目录，因为 `dbhub.toml` 中的 DSN 使用相对路径 `data/signals.db`。缺少 `cwd` 会导致 dbhub 找不到数据库。
 
 #### Claude Code 配置
 
@@ -124,32 +135,35 @@ npm install -g @bytebase/dbhub@latest  # 全局安装，自动编译 better-sqli
 {
   "mcpServers": {
     "signals-db": {
-      "command": "npx",
-      "args": ["-y", "@bytebase/dbhub@latest", "--transport", "stdio",
-               "--config", "<项目绝对路径>/dbhub.toml"]
+      "command": "bash",
+      "args": ["-c", "cd <project-root> && npx -y @bytebase/dbhub@latest --transport stdio --config dbhub.toml"]
     }
   }
 }
 ```
 
+> Claude Code project-level config runs from the project root, so `cd <project-root>` ensures the relative DSN in `dbhub.toml` resolves correctly.
+
 **方式 B（全局）**：`claude mcp add` 命令行添加：
 
 ```bash
 claude mcp add signals-db \
-  --command "npx -y @bytebase/dbhub@latest --transport stdio --config <项目绝对路径>/dbhub.toml"
+  --command "bash -c 'cd <project-root> && npx -y @bytebase/dbhub@latest --transport stdio --config dbhub.toml'"
 ```
+
+> Global mode does not guarantee cwd. The `cd` wrapper ensures dbhub starts in the project root.
 
 添加后在 Claude Code 里输入 `/mcp` 可验证 `signals-db` 是否已连接。
 
 #### 其他 MCP Client（Cline、OpenCode、自建等）
 
-所有支持 MCP stdio 协议的 client 都能用，核心启动命令相同：
+所有支持 MCP stdio 协议的 client 都能用。**注意**：`dbhub.toml` 使用相对 DSN `data/signals.db`，启动时必须确保工作目录为项目根：
 
 ```bash
-npx -y @bytebase/dbhub@latest --transport stdio --config /path/to/dbhub.toml
+cd <project-root> && npx -y @bytebase/dbhub@latest --transport stdio --config dbhub.toml
 ```
 
-每个 client 的配置文件格式不同，但原理一样：指定 `command` + `args`。
+每个 client 的配置文件格式不同，但原理一样：用 `cd` 或 `cwd` 配置保证工作目录，再指定 `command` + `args`。
 
 #### 远程 HTTP 模式
 
@@ -205,7 +219,7 @@ Week 2 REST API 待做（FastAPI，接口已对齐 D3.3）。目前可以：
 ## 测试
 
 ```bash
-.venv/bin/python -m pytest tests/ -q   # 276 passed
+.venv/bin/python -m pytest tests/ -q   # 验证所有测试通过
 ```
 
 ## 项目结构
@@ -229,7 +243,6 @@ Week 2 REST API 待做（FastAPI，接口已对齐 D3.3）。目前可以：
 ├── data/
 │   ├── signals.db            # SQLite 数据库（7 表 + FTS5）
 │   └── cache/                # JSON 缓存（原子写，可直接读）
-└── design/                   # 架构设计文档
 ```
 
 ## 深入文档
@@ -237,6 +250,4 @@ Week 2 REST API 待做（FastAPI，接口已对齐 D3.3）。目前可以：
 | 文件 | 内容 |
 |---|---|
 | `src/README.md` | 开发者详细文档（517 行）：模块职责、API 接口、前向扩展、内部约定 |
-| `design/module_1_3_architecture.md` | 完整架构设计（2000 行）：DDL、算法、MCP 工具定义 |
-| `thinking/` | 项目决策记录 |
 | `dbhub.toml` | MCP 工具配置（6 个工具：2 内置 + 4 自定义） |

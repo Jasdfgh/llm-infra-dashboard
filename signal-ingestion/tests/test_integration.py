@@ -1,7 +1,7 @@
 """Integration tests: full sync pipeline with MockAdapter + optional real GitHub.
 
-Promotes the manual E2E scripts (``scripts/_e2e_acceptance.py``,
-``scripts/_e2e_real_github.py``, ``scripts/test_feed_enhancement.py``) into
+Promotes the manual E2E scripts (``scripts/e2e_acceptance.py``,
+``scripts/e2e_real_github.py``) into
 proper pytest cases.
 
 Group 1 — **Mock Integration** (no network, CI-safe):
@@ -47,7 +47,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 # ============================================================================
-# MockAdapter — replays demo/signals/*.json (from _e2e_acceptance.py)
+# MockAdapter — replays tests/fixtures/signals/*.json (from e2e_acceptance.py)
 # ============================================================================
 
 
@@ -120,7 +120,7 @@ def _discovery_item_to_raw(d: dict, *, repo: str) -> dict:
 
 
 class MockAdapter:
-    """Replays demo/signals/*.json as adapter outputs."""
+    """Replays tests/fixtures/signals/*.json as adapter outputs."""
 
     source_type = SourceType.GITHUB_ISSUE
 
@@ -135,7 +135,7 @@ class MockAdapter:
         self._load_demos()
 
     def _load_demos(self) -> None:
-        base = REPO_ROOT / "demo/signals"
+        base = REPO_ROOT / "tests/fixtures/signals"
         self.issue_data = json.loads((base / "issue_39303.json").read_text())
         self.pr_data = json.loads((base / "pr_39616.json").read_text())
         discovery = json.loads((base / "discovery_vllm_rocm.json").read_text())
@@ -433,7 +433,7 @@ class TestAcceptanceCriteria:
 
 
 # ============================================================================
-# Group 1: Feed enhancement (from test_feed_enhancement.py)
+# Group 1: Feed enhancement
 # ============================================================================
 
 

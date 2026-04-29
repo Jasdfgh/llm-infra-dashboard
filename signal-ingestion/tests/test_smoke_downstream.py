@@ -37,7 +37,7 @@ def fixture_db(tmp_path_factory):
 
 
 def test_sm01_vivi_full_pull(fixture_db):
-    """Vivi 第一次拉取所有未分类 signal。"""
+    """Vivi pulls all unclassified signals for the first time."""
     with SignalRepository(fixture_db) as repo:
         feed = SignalSearch(repo).get_feed(
             since="1970-01-01T00:00:00Z", classified=False
@@ -54,7 +54,7 @@ def test_sm01_vivi_full_pull(fixture_db):
 
 
 def test_sm02_vivi_incremental_pull(fixture_db):
-    """Vivi 用 since= 上次时间只看新/变的 signal。"""
+    """Vivi uses since= to fetch only new/changed signals since the last pull."""
     with SignalRepository(fixture_db) as repo:
         feed = SignalSearch(repo).get_feed(
             since="2099-01-01T00:00:00Z", classified=False
@@ -63,7 +63,7 @@ def test_sm02_vivi_incremental_pull(fixture_db):
 
 
 def test_sm03_vivi_get_detail(fixture_db):
-    """get_detail 返回完整 body + comments。"""
+    """get_detail returns the full body + comments."""
     with SignalRepository(fixture_db) as repo:
         detail = SignalSearch(repo).get_detail(
             "github:vllm-project/vllm:issue:39303"
@@ -77,7 +77,7 @@ def test_sm03_vivi_get_detail(fixture_db):
 
 
 def test_sm04_vivi_classify_and_writeback(fixture_db):
-    """分类写回后，get_feed(classified=False) 不再返回这条。"""
+    """After classification writeback, get_feed(classified=False) no longer returns this signal."""
     with SignalRepository(fixture_db) as repo:
         search = SignalSearch(repo)
         feed = search.get_feed(
@@ -101,7 +101,7 @@ def test_sm04_vivi_classify_and_writeback(fixture_db):
 
 
 def test_sm05_vivi_reclassify_decision(fixture_db):
-    """已分类的 signal 如果有 recent_changes，Vivi 需要看到它。"""
+    """A classified signal with recent_changes should still be visible to Vivi."""
     with SignalRepository(fixture_db) as repo:
         search = SignalSearch(repo)
         feed = search.get_feed(
@@ -118,7 +118,7 @@ def test_sm05_vivi_reclassify_decision(fixture_db):
 
 
 def test_sm06_agent_fts_search(fixture_db):
-    """FTS5 搜索 'aiter MLA' 返回相关 signal。"""
+    """FTS5 search for 'aiter MLA' returns relevant signals."""
     with SignalRepository(fixture_db) as repo:
         r = SignalSearch(repo).search(query="aiter MLA")
         assert r["total"] >= 1
@@ -128,7 +128,7 @@ def test_sm06_agent_fts_search(fixture_db):
 
 
 def test_sm07_agent_detail_with_comments(fixture_db):
-    """Agent get_detail 拿到 comments + references。"""
+    """Agent get_detail retrieves comments + references."""
     with SignalRepository(fixture_db) as repo:
         d = SignalSearch(repo).get_detail(
             "github:vllm-project/vllm:issue:39303",
@@ -139,7 +139,7 @@ def test_sm07_agent_detail_with_comments(fixture_db):
 
 
 def test_sm08_agent_get_changes(fixture_db):
-    """get_changes 返回有意义变更。"""
+    """get_changes returns meaningful changes."""
     with SignalRepository(fixture_db) as repo:
         changes = repo.get_changes(
             signal_id="github:vllm-project/vllm:issue:39303",
@@ -152,7 +152,7 @@ def test_sm08_agent_get_changes(fixture_db):
 
 
 def test_sm09_agent_gap_lookup(fixture_db):
-    """#39303 已被分类到 gap_001，能按 gap_id 查到。"""
+    """#39303 is classified under gap_001 and can be found by gap_id."""
     with SignalRepository(fixture_db) as repo:
         search = SignalSearch(repo)
         r = search.search(gap_ids=["gap_001"])
@@ -167,7 +167,7 @@ def test_sm09_agent_gap_lookup(fixture_db):
 
 
 def test_sm10_body_edit_overwrites_and_audits(fixture_db):
-    """body 变化 → signals 表存最新，signal_changes 有 BODY_EDIT。"""
+    """Body change → signals table stores the latest, signal_changes records BODY_EDIT."""
     with SignalRepository(fixture_db) as repo:
         old = repo.get_by_id("github:vllm-project/vllm:issue:39303")
         assert old is not None
@@ -216,7 +216,7 @@ def test_sm10_body_edit_overwrites_and_audits(fixture_db):
 
 
 def test_sm11_cache_db_consistency(fixture_db):
-    """cache JSON 的 signal_id 和 DB 匹配。"""
+    """Cache JSON signal_id matches the DB."""
     cache_dir = Path(__file__).parent.parent / "data/fixtures/cache"
     if not cache_dir.exists():
         pytest.skip("fixture cache not generated")

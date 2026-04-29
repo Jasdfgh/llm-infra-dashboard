@@ -1,31 +1,31 @@
 #!/usr/bin/env python3
-"""Module 4 (Agent Workflow) 查询示例 — Zijun 专用。
+"""Module 4 (Agent Workflow) query examples — for Zijun.
 
-用法:
+Usage:
     .venv/bin/python examples/module4_agent_queries.py
 
-本脚本演示 Agent 常见的 6 类查询（通过 Python API 直调）。
+This script demonstrates 6 common Agent query patterns (via Python API direct calls).
 
-MCP 使用方式（推荐，不需要 Python）：
-  Signals Service MCP 提供 12 个工具，覆盖查询+同步+管理。
-  本脚本演示 Python 直调接口，对应的 MCP 工具如下：
-    search_signals(query)        → 本脚本的 "搜索" 部分
-    get_signal_detail(signal_id) → "详情" 部分
-    get_signal_changes(signal_id) → "变更历史" 部分
-    get_gap_signals(gap_id)      → "gap 关联" 部分
-    get_stats()                  → "聚合统计" 部分
-    execute_sql(sql)             → 任意只读 SQL
+MCP usage (recommended, no Python needed):
+  Signals Service MCP provides 12 tools covering query + sync + management.
+  This script demonstrates the Python API; corresponding MCP tools:
+    search_signals(query)        → "search" section in this script
+    get_signal_detail(signal_id) → "detail" section
+    get_signal_changes(signal_id) → "change history" section
+    get_gap_signals(gap_id)      → "gap association" section
+    get_stats()                  → "aggregate stats" section
+    execute_sql(sql)             → arbitrary read-only SQL
 
-  MCP 配置（在 ~/.cursor/mcp.json 的 mcpServers 中添加）：
-    同机器：  "signals-service": { "url": "http://localhost:8082/mcp" }
-    内网：    "signals-service": { "url": "http://<server-ip>:8082/mcp" }
+  MCP config (add to mcpServers in ~/.cursor/mcp.json):
+    Same machine: "signals-service": { "url": "http://localhost:8082/mcp" }
+    LAN:          "signals-service": { "url": "http://<server-ip>:8082/mcp" }
 
-  完整接入教程见 examples/mcp_service_guide.md
+  Full integration guide at examples/mcp_service_guide.md
 
-接口版本:
-    from src import INTERFACE_VERSION  # pin 到 "1.0"
+Interface version:
+    from src import INTERFACE_VERSION  # pinned to "1.0"
 
-依赖: 仅 Python stdlib + src/ (无额外包)
+Dependencies: Python stdlib + src/ only (no extra packages)
 """
 import json
 import sys
@@ -38,7 +38,7 @@ from src.storage.repository import SignalRepository
 from src.storage.search import SignalSearch
 
 # ─────────────────────────────────────────────────────────────
-# 数据库路径
+# DB path
 # ─────────────────────────────────────────────────────────────
 _FIXTURE_DB = PROJECT_ROOT / "data" / "fixtures" / "signals_fixture.db"
 _MAIN_DB = PROJECT_ROOT / "data" / "signals.db"
@@ -60,7 +60,7 @@ SEPARATOR = "=" * 60
 
 
 def _print_signal_row(sig: dict, prefix: str = "  ") -> None:
-    """打印 signal 摘要的单行格式。"""
+    """Print a one-line summary for a signal."""
     title = (sig.get("title") or "")[:70]
     state = sig.get("github_state") or "?"
     labels = sig.get("github_labels", [])
@@ -85,7 +85,7 @@ def main() -> None:
     with SignalRepository(DB_PATH) as repo:
         search = SignalSearch(repo)
 
-        # ── 场景 1: FTS5 全文搜索 ──────────────────────────
+        # ── Scenario 1: FTS5 full-text search ────────────────
         print(f"{SEPARATOR}\n场景 1: FTS5 搜索 (query='aiter MLA')\n{SEPARATOR}")
         print("MCP 等价: search_signals(query='aiter MLA')")
         print()
@@ -100,7 +100,7 @@ def main() -> None:
             print("  (无结果 — DB 中可能没有匹配 'aiter MLA' 的 signal)")
             print()
 
-        # ── 场景 2: 按 repo + state + labels 过滤 ─────────
+        # ── Scenario 2: Filter by repo + state + labels ─────
         print(f"{SEPARATOR}\n场景 2: 按 repo + state + labels 过滤\n{SEPARATOR}")
         print("MCP 等价: execute_sql('SELECT ... WHERE source_repo=? AND github_state=? ...')")
         print()
@@ -121,7 +121,7 @@ def main() -> None:
             print("  (无结果 — 尝试放宽过滤条件)")
             print()
 
-        # ── 场景 3: 单条详情 + comments ───────────────────
+        # ── Scenario 3: Single signal detail + comments ─────
         print(f"{SEPARATOR}\n场景 3: 查单条详情 + comments\n{SEPARATOR}")
         print("MCP 等价: get_signal_detail(signal_id)")
         print()
@@ -164,7 +164,7 @@ def main() -> None:
             print("  ⚠️ DB 为空，跳过详情查询")
             print()
 
-        # ── 场景 4: 变更历史 ─────────────────────────────
+        # ── Scenario 4: Change history ─────────────────────
         print(f"{SEPARATOR}\n场景 4: 查变更历史\n{SEPARATOR}")
         print("MCP 等价: get_signal_changes(signal_id)")
         print()
@@ -187,7 +187,7 @@ def main() -> None:
             print("  ⚠️ 无可用 signal，跳过")
             print()
 
-        # ── 场景 5: gap 关联查询 ─────────────────────────
+        # ── Scenario 5: Query signals by gap association ───
         print(f"{SEPARATOR}\n场景 5: 查 gap 关联的所有 signal\n{SEPARATOR}")
         print("MCP 等价: get_gap_signals(gap_id='gap_001')")
         print()
@@ -203,7 +203,7 @@ def main() -> None:
             print("  提示: Module 2 分类后 gap_ids 才有数据")
             print()
 
-        # ── 场景 6: 聚合统计 ─────────────────────────────
+        # ── Scenario 6: Aggregate statistics ─────────────
         print(f"{SEPARATOR}\n场景 6: 聚合统计\n{SEPARATOR}")
         print("MCP 等价: execute_sql('SELECT COUNT(*) ...')")
         print()
@@ -227,7 +227,7 @@ def main() -> None:
         print(f"    2026-04 以来:     {recent_changes}")
         print()
 
-    # ── 完成 ─────────────────────────────────────────────
+    # ── Done ──────────────────────────────────────────────
     print(SEPARATOR)
     print("完成！以上 6 个场景覆盖了 Agent 最常用的查询模式。")
     print()

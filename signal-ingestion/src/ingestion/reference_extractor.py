@@ -5,7 +5,7 @@ more families tomorrow), and GitHub ``@mentions`` out of bodies and
 comments. The output is a ``References`` Pydantic model that drops
 directly into ``Signal.references``.
 
-See ``design/module_1_3_architecture.md`` D4 Step 4c for the regex
+See D4 Step 4c (reference extraction regex catalog) for the regex
 catalog. The extraction rules here stay deliberately conservative:
 we would rather miss an obscure shorthand than add a fake reference
 that pollutes downstream reconciliation.

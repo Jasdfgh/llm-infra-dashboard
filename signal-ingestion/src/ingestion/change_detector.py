@@ -1,8 +1,7 @@
 """Change detection + content hashing for signal sync.
 
 Implements D5 (``compute_content_hash``, ``detect_changes``,
-``classify_comment_meaningfulness``) from
-``design/module_1_3_architecture.md``.
+``classify_comment_meaningfulness``).
 
 Module boundaries:
 
@@ -251,7 +250,7 @@ class ChangeDetector:
     ``NEW_SIGNAL``, ``CLOSED``, ``REOPENED``, ``LABEL_CHANGE``,
     ``NEW_COMMENT``, ``BODY_EDIT``, ``ASSIGNEE_CHANGE``, ``PR_MERGED``.
     ``PR_LINKED`` and ``COMMENT_COUNT_CHANGE`` are intentionally deferred
-    (task spec "MVP 不做").
+    (task spec: "deferred from MVP").
 
     Args:
         body_edit_meaningful_threshold: Number of chars. Body edits whose

@@ -10,7 +10,7 @@ Covers the full matrix from the task spec:
 * code-block stripping (inline + fenced)
 * URL fragments (``foo.com/a/b#99``) must not leak
 * deduplication + empty/None inputs
-* real demo payload from ``demo/signals/pr_39616.json``
+* real demo payload from ``tests/fixtures/signals/pr_39616.json``
 
 These are pure-function tests; no DB / network / fixtures beyond the
 JSON demo file.
@@ -31,7 +31,7 @@ from src.ingestion.reference_extractor import extract_references
 # ---------------------------------------------------------------------------
 
 
-DEMO_DIR = Path(__file__).resolve().parents[1] / "demo" / "signals"
+DEMO_DIR = Path(__file__).resolve().parent / "fixtures" / "signals"
 
 
 @pytest.fixture(scope="module")

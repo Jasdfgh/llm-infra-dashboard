@@ -4,8 +4,8 @@ This module is deliberately thin: it only opens connections with the right
 PRAGMAs and applies the schema idempotently. All CRUD / query logic belongs
 to Layer 2 (`repository.py`) and MUST NOT leak back in here.
 
-The DDL below mirrors `design/module_1_3_architecture.md` D2.2 column-for-
-column. If the design doc changes, update `_DDL_STATEMENTS` first and keep
+The DDL below mirrors the Signal envelope schema — column-for-
+column. If the schema changes, update `_DDL_STATEMENTS` first and keep
 the two in lockstep.
 
 See D2.2 (SQLite DDL) and D8 (MVP 4/24 deliverables).
@@ -67,7 +67,7 @@ _DDL_STATEMENTS: tuple[str, ...] = (
         gap_ids               TEXT
     )
     """,
-    # Deterministic indexes (D2.2 §"四种确定性索引" + dedup unique index).
+    # Deterministic indexes (D2.2 §"four deterministic indexes" + dedup unique index).
     "CREATE INDEX IF NOT EXISTS idx_signals_repo_updated ON signals(source_repo, updated_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_signals_synced ON signals(last_synced_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_signals_created ON signals(created_at DESC)",

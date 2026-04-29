@@ -1,8 +1,7 @@
 # AI Infra Gap Intelligence — Module 1 & 3
 
 > Signal Ingestion + Central Storage for the AMD vs NVIDIA LLM infra gap tracker.
-> 面向开发者的快速上手和内部结构说明。整体架构、设计决策、未来路线见
-> `design/module_1_3_architecture.md`。
+> 面向开发者的快速上手和内部结构说明。本文件即开发者指南，涵盖架构概览、设计决策和前向扩展路线。
 
 ---
 
@@ -46,8 +45,12 @@ bug、修复进度。
 | 4. Agent Workflow（Worker + Coordinator） | Vivi + Zijun | ❌ 未来通过 MCP 消费 |
 | 5-6. Dashboard / REST API | Vincent | ❌ 未来通过 REST API 消费 |
 
-**MVP 今天不做**（Week 2+）：
-- MCP Service、HTTP REST API、APScheduler、Twitter/ArXiv adapter、
+**已实现但不在本 src/ 中**：
+- MCP Service（12 tools，见 `scripts/signals_mcp_server.py` + `dbhub.toml`）
+- 定时调度（systemd timer 替代了原计划的 APScheduler）
+
+**Planned**：
+- HTTP REST API、Twitter/ArXiv adapter、
   Module 2 分类回写端点、Dashboard 聚合 API
 
 ---
@@ -219,7 +222,7 @@ from pathlib import Path
 
 for p in Path("data/cache/github/vllm-project_vllm/issues/").glob("*.json"):
     sig = json.loads(p.read_text())
-    # sig 完整 shape 见 design/module_1_3_architecture.md D2.1
+    # Full signal shape: see D2.1 (Signal envelope) in models.py
 ```
 
 **Signal envelope 关键字段**（D2.1 原文）：
@@ -239,9 +242,9 @@ for p in Path("data/cache/github/vllm-project_vllm/issues/").glob("*.json"):
 
 ### Module 4 (Agent Workflow)
 
-目前 MVP 没有 MCP Service。Week 2 会按 D3.2 实现 4 个工具：`search_signals` / `get_signal_detail` / `get_signal_changes` / `get_gap_signals`。
+MCP Service 已上线（`scripts/signals_mcp_server.py` + `dbhub.toml`），提供 12 个工具，包括 D3.2 规划的核心 4 个：`search_signals` / `get_signal_detail` / `get_signal_changes` / `get_gap_signals`，以及 `execute_sql`、`search_objects` 等。配置方式见根目录 `README.md`。
 
-**当前临时方案**：Agent 直接用 `GitHub MCP`（已在 `~/.cursor/mcp.json` 配好，41 工具）+ 直接读 `data/cache/github/**/*.json` 文件。
+Agent 也可使用 `GitHub MCP`（已在 `~/.cursor/mcp.json` 配好，41 工具）做实时代码级查询，或直接读 `data/cache/github/**/*.json` 缓存文件。
 
 ### Module 5-6 (Dashboard)
 
@@ -353,26 +356,16 @@ async def feed(since: str, classified: bool = False, limit: int = 100):
 
 `SignalSearch.search() / get_detail() / get_feed()` 签名已经按 D3.1/D3.3 对齐，包一层 FastAPI 即可。
 
-### 加 MCP Service（Week 2，for Module 4 Agent）
+### MCP Service（已实现）
 
-按 D3.2 的 4 个工具签名（`search_signals` / `get_signal_detail` /
-`get_signal_changes` / `get_gap_signals`）包装 `SignalSearch`。
+MCP Service 已上线，提供 12 个工具（含 D3.2 规划的 `search_signals` /
+`get_signal_detail` / `get_signal_changes` / `get_gap_signals`）。
+实现见 `scripts/signals_mcp_server.py` + `dbhub.toml`，配置方式见根目录 `README.md`。
 
-### 加定时调度（Week 2）：APScheduler
+### 定时调度（已实现）
 
-```python
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
-
-scheduler = AsyncIOScheduler()
-for cfg in yaml_config["github"]["repos"]:
-    scheduler.add_job(
-        sync_one_repo,
-        CronTrigger.from_crontab(cfg["schedule"]["incremental"]),
-        args=[cfg],
-    )
-scheduler.start()
-```
+使用 systemd timer（或 crontab）驱动增量同步，替代了原计划的 APScheduler。
+配置示例见根目录 `README.md` "定时自动拉取" 小节。
 
 ### DB 升级（D9 路径）
 
@@ -438,7 +431,7 @@ else:
 
 ### body 完整保留，不截断
 
-`design/module_1_3_architecture.md` D2.1 硬性要求："body": "..." // 完整 body，
+D2.1 硬性要求："body": "..." // 完整 body，
 不截断。所以 `Normalizer` 的 `body_max_chars=0` 默认，**不要**改成任何正数。
 
 ### content_hash 的 "meaningful fields"
@@ -486,7 +479,7 @@ REST API（`/repos/.../issues`）用 `bucket="rest"`（5000/hr），Search API
 
 ```bash
 .venv/bin/python -m pytest tests/ -v
-# 76 passed
+# 验证所有测试通过（运行 pytest tests/ -q 查看最新计数）
 ```
 
 单元测试覆盖的 3 个纯函数模块：
@@ -498,7 +491,7 @@ REST API（`/repos/.../issues`）用 `bucket="rest"`（5000/hr），Search API
 - `rate_limiter` 的 async 并发行为（手动集成测试过）
 - `GitHubAdapter` 的 HTTP 层（需要 mock httpx 或真实 token）
 - `Repository` 的 DB 层（集成测试跑真实 SQLite）
-- `orchestrator` 的端到端（`scripts/_e2e_acceptance.py` 用 mock adapter 跑过）
+- `orchestrator` 的端到端（`scripts/e2e_acceptance.py` 用 mock adapter 跑过）
 
 ---
 
@@ -506,11 +499,6 @@ REST API（`/repos/.../issues`）用 `bucket="rest"`（5000/hr），Search API
 
 | 文件 | 内容 |
 |---|---|
-| `design/module_1_3_architecture.md` | **完整架构（~2000 行）**：D0-D9 + 附录。字段定义、DDL、算法伪代码、扩展指南 |
-| `thinking/2026-04-20_session.md` | 项目启动讨论、产品定位、所有架构决策 |
-| `thinking/github_mcp_investigation.md` | GitHub MCP 能力边界调研（26→41 工具、rate limit、工具组合） |
-| `external/other cursor chat/github-mcp-官方版使用指南.md` | 官方版 MCP 的 `issue_read` / `pull_request_read` / `list_tags` 用法 |
-| `demo/signals/*.json` | 3 个真实数据样本：单 issue、单 PR、批量发现（93.4% 压缩比） |
+| `tests/fixtures/signals/*.json` | 3 个真实数据样本：单 issue、单 PR、批量发现（93.4% 压缩比） |
 
-**改代码之前务必先读 `module_1_3_architecture.md` 的对应章节**。这份
-README 只是快速索引。
+**改代码之前先读本文档和目标模块的 docstring**。

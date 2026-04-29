@@ -32,7 +32,7 @@ from src.storage.repository import SignalRepository
 
 FIXTURE_DB = ROOT / "data" / "fixtures" / "signals_fixture.db"
 FIXTURE_CACHE = ROOT / "data" / "fixtures" / "cache"
-DEMO_DIR = ROOT / "demo" / "signals"
+DEMO_DIR = ROOT / "tests" / "fixtures" / "signals"
 SYNC_RUN_ID = "fixture_gen_001"
 SYNCED_AT = "2026-04-22T06:03:00Z"
 ISSUE_SID = "github:vllm-project/vllm:issue:39303"

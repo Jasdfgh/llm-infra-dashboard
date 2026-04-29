@@ -1,11 +1,11 @@
 """JSONCache — file-backed cache for full Signal+Comments dumps.
 
-See `design/module_1_3_architecture.md` D4 Step 8:
+JSON file cache for complete signal + comments snapshots (D4 Step 8):
 
-> 对有变化的 signal:
->     路径: data/cache/github/{repo_slug}/issues/{number}.json
->     内容: 完整 Signal envelope + 嵌入的 comments[]
->     用途: Worker Agent context 注入时直接读文件，不查 DB
+> For signals with changes:
+>     Path: data/cache/github/{repo_slug}/issues/{number}.json
+>     Content: Full Signal envelope + embedded comments[]
+>     Purpose: Worker Agent reads the file directly for context injection, no DB query needed
 
 Path convention
 ---------------

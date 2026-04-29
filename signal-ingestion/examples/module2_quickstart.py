@@ -1,32 +1,32 @@
 #!/usr/bin/env python3
-"""Module 2 (Signal Classifier) 快速接入示例 — Vivi 专用。
+"""Module 2 (Signal Classifier) quickstart example — for Vivi.
 
-用法:
+Usage:
     .venv/bin/python examples/module2_quickstart.py
 
-本脚本演示 Vivi 的完整工作流（7 步）：
-  1. 连接 DB
-  2. 拉取未分类 signal (get_feed)
-  3. 预览列表
-  4. 深入查看第一条 (get_detail)
-  5. 模拟分类 (your_classifier — 替换成你的 LLM 逻辑)
-  6. 写回分类 (update_classification)
-  7. 验证（再拉 feed，确认该条不在了）
+This script demonstrates Vivi's complete workflow (7 steps):
+  1. Connect to DB
+  2. Fetch unclassified signals (get_feed)
+  3. Preview the list
+  4. Inspect the first signal (get_detail)
+  5. Simulate classification (your_classifier — replace with your LLM logic)
+  6. Write back classification (update_classification)
+  7. Verify (re-fetch feed, confirm the signal is gone)
 
-接口版本:
-    from src import INTERFACE_VERSION  # pin 到 "1.0"
+Interface version:
+    from src import INTERFACE_VERSION  # pinned to "1.0"
 
-依赖: 仅 Python stdlib + src/ (无额外包)
+Dependencies: Python stdlib + src/ only (no extra packages)
 
-日常工作流（每天跑一次）：
-  1. 确保 sync 已跑完（检查 data/signals.db 的 sync_runs）
-  2. 跑本脚本拉取未分类 signal
-  3. 用你的 LLM 分类器替换 your_classifier()
-  4. 分类结果自动写回 DB
+Daily workflow (run once per day):
+  1. Ensure sync has completed (check sync_runs in data/signals.db)
+  2. Run this script to fetch unclassified signals
+  3. Replace your_classifier() with your LLM classifier
+  4. Classification results are automatically written back to DB
 
-定时化建议：
-  把 sync_github.py 加到 crontab（见 examples/ops_cheatsheet.sh）
-  然后把本脚本改成你的分类 pipeline 的入口
+Scheduling tips:
+  Add sync_github.py to crontab (see examples/ops_cheatsheet.sh)
+  Then make this script the entry point of your classification pipeline
 """
 import json
 import sys
@@ -39,7 +39,7 @@ from src.storage.repository import SignalRepository
 from src.storage.search import SignalSearch
 
 # ─────────────────────────────────────────────────────────────
-# 数据库路径: fixture DB 优先，fallback 到 signals.db
+# DB path: prefer fixture DB, fallback to signals.db
 # ─────────────────────────────────────────────────────────────
 _FIXTURE_DB = PROJECT_ROOT / "data" / "fixtures" / "signals_fixture.db"
 _MAIN_DB = PROJECT_ROOT / "data" / "signals.db"
@@ -64,14 +64,14 @@ SEPARATOR = "=" * 60
 
 
 # ─────────────────────────────────────────────────────────────
-# Step 5 占位: 替换成你的 LLM 分类逻辑
+# Step 5 placeholder: replace with your LLM classification logic
 # ─────────────────────────────────────────────────────────────
 def your_classifier(detail: dict) -> tuple[str, list[str], float]:
-    """占位分类器 — 返回 (signal_category, gap_ids, confidence)。
+    """Placeholder classifier — returns (signal_category, gap_ids, confidence).
 
-    *** 替换成你的 LLM 分类逻辑 ***
-    例如: 把 detail["title"] + detail["body"] 送给 GPT/Claude，
-    让它返回分类标签和关联的 gap_id 列表。
+    *** Replace with your LLM classification logic ***
+    For example: feed detail["title"] + detail["body"] to GPT/Claude
+    and have it return classification labels and an associated gap_id list.
     """
     return "amd_gap", ["gap_001"], 0.85
 
@@ -83,14 +83,14 @@ def main() -> None:
     print(f"数据库: {DB_PATH}")
     print()
 
-    # ── Step 1: 连接 DB ────────────────────────────────────
+        # ── Step 1: Connect to DB ──────────────────────────────
     print(f"{SEPARATOR}\nStep 1: 连接数据库\n{SEPARATOR}")
     with SignalRepository(DB_PATH) as repo:
         search = SignalSearch(repo)
         print(f"✅ 已连接: {DB_PATH.name}")
         print()
 
-        # ── Step 2: 拉取未分类 signal ─────────────────────
+        # ── Step 2: Fetch unclassified signals ─────────────
         print(f"{SEPARATOR}\nStep 2: 拉取未分类 signal (get_feed)\n{SEPARATOR}")
         feed = search.get_feed(
             since="2000-01-01T00:00:00Z",
@@ -110,7 +110,7 @@ def main() -> None:
             print("   请先运行 sync_github.py 拉取数据。")
             return
 
-        # ── Step 3: 预览列表 ──────────────────────────────
+        # ── Step 3: Preview the list ──────────────────────
         print(f"{SEPARATOR}\nStep 3: 预览 signal 列表\n{SEPARATOR}")
         for i, sig in enumerate(signals[:10], 1):
             changes = sig.get("recent_changes", [])
@@ -128,7 +128,7 @@ def main() -> None:
             print(f"  ... 还有 {pagination['total'] - 10} 条未显示")
             print()
 
-        # ── Step 4: 深入查看第一条 ────────────────────────
+        # ── Step 4: Inspect the first signal ──────────────
         print(f"{SEPARATOR}\nStep 4: 深入查看第一条 signal (get_detail)\n{SEPARATOR}")
         target = signals[0]
         target_id = target["signal_id"]
@@ -153,7 +153,7 @@ def main() -> None:
             print(f"    {comment_body[:150]}...")
         print()
 
-        # ── Step 5: 模拟分类 ──────────────────────────────
+        # ── Step 5: Simulate classification ──────────────
         print(f"{SEPARATOR}\nStep 5: 模拟分类 (your_classifier)\n{SEPARATOR}")
         category, gap_ids, confidence = your_classifier(detail)
         print(f"  分类结果:")
@@ -162,7 +162,7 @@ def main() -> None:
         print(f"    confidence: {confidence}")
         print()
 
-        # ── Step 6: 写回分类结果 ──────────────────────────
+        # ── Step 6: Write back classification ─────────────
         print(f"{SEPARATOR}\nStep 6: 写回分类结果 (update_classification)\n{SEPARATOR}")
         ok = repo.update_classification(
             target_id,
@@ -178,7 +178,7 @@ def main() -> None:
             return
         print()
 
-        # ── Step 7: 验证 ─────────────────────────────────
+        # ── Step 7: Verify ────────────────────────────────
         print(f"{SEPARATOR}\nStep 7: 验证 — 再拉 feed 确认该条不在了\n{SEPARATOR}")
         feed2 = search.get_feed(
             since="2000-01-01T00:00:00Z",
@@ -194,7 +194,7 @@ def main() -> None:
         print(f"   未分类剩余: {feed2['pagination']['total']} 条")
         print()
 
-    # ── 完成 ─────────────────────────────────────────────
+    # ── Done ──────────────────────────────────────────────
     print(SEPARATOR)
     print("完成！你可以把 `your_classifier()` 替换成你的 LLM 分类逻辑。")
     print()

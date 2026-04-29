@@ -1,21 +1,25 @@
 #!/usr/bin/env bash
 # =============================================================================
-# 全量拉取 vllm + sglang → 跑 benchmark → 生成报告
+# Full sync vllm + sglang → run benchmark → generate report
 #
-# 用法:  nohup bash scripts/full_sync_and_report.sh > data/full_sync_master.log 2>&1 &
+# Usage: nohup bash scripts/full_sync_and_report.sh > data/full_sync_master.log 2>&1 &
 #
-# 串行执行（SQLite 单写限制），完成后自动出报告。
+# Runs sequentially (SQLite single-writer constraint); generates report on completion.
 # =============================================================================
 
 set -euo pipefail
 
-PROJ="/home/yaywang/my-llm-infra-dashboard"
+PROJ="$(cd "$(dirname "$0")/.." && pwd)"
+if [ ! -d "$PROJ/src" ] || [ ! -f "$PROJ/requirements.txt" ]; then
+    echo "ERROR: Invalid project root: $PROJ" >&2
+    exit 1
+fi
 VENV="$PROJ/.venv/bin/python"
 DATA="$PROJ/data"
-REPORT="$PROJ/thinking/full_sync_report.md"
+REPORT="$PROJ/data/reports/full_sync_report.md"
 LOCK_FILE="/tmp/signals-sync.lock"
 
-mkdir -p "$DATA"
+mkdir -p "$DATA" "$(dirname "$REPORT")"
 
 ts() { date '+%Y-%m-%d %H:%M:%S'; }
 
@@ -55,7 +59,7 @@ echo "[Phase 1] vllm-project/vllm FULL sync — started $(ts)"
 echo "================================================================"
 VLLM_START=$(date +%s)
 
-$VENV scripts/sync_github.py \
+$VENV "$PROJ/scripts/sync_github.py" \
     --repo vllm-project/vllm \
     --labels "" \
     --mode full \
@@ -95,7 +99,7 @@ echo "[Phase 2] sgl-project/sglang FULL sync — started $(ts)"
 echo "================================================================"
 SGLANG_START=$(date +%s)
 
-$VENV scripts/sync_github.py \
+$VENV "$PROJ/scripts/sync_github.py" \
     --repo sgl-project/sglang \
     --labels "" \
     --mode full \
@@ -183,7 +187,7 @@ echo "[Phase 5] Running benchmark ($(ts))"
 echo "================================================================"
 BENCH_START=$(date +%s)
 
-$VENV scripts/benchmark_db.py --db-path "$DATA/signals.db" --iterations 500 \
+$VENV "$PROJ/scripts/benchmark_db.py" --db-path "$DATA/signals.db" --iterations 500 \
     2>&1 | tee "$DATA/benchmark_full.log"
 
 BENCH_END=$(date +%s)
@@ -241,16 +245,14 @@ $(tail -30 "$DATA/sync_vllm_full.log" 2>/dev/null || echo "log not available")
 $(tail -30 "$DATA/sync_sglang_full.log" 2>/dev/null || echo "log not available")
 \`\`\`
 
-## vs Week 2 Scale Plan Predictions
+## Scale Metrics
 
-Compare with \`thinking/week2_scale_test_plan.md\` §2.2:
-
-| Metric | Predicted (40K) | Actual | Ratio |
-|---|---|---|---|
-| DB size | ~480 MB | _(fill from above)_ | |
-| signals count | ~40,000 | _(fill from above)_ | |
-| FTS5 search | 0.08-0.15ms | _(fill from benchmark)_ | |
-| GROUP BY aggregate | 50-100ms | _(fill from benchmark)_ | |
+| Metric | Actual |
+|---|---|
+| DB size | _(fill from above)_ |
+| signals count | _(fill from above)_ |
+| FTS5 search | _(fill from benchmark)_ |
+| GROUP BY aggregate | _(fill from benchmark)_ |
 
 ---
 

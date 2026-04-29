@@ -9,7 +9,11 @@
 
 set -euo pipefail
 
-PROJ="/home/yaywang/my-llm-infra-dashboard"
+PROJ="$(cd "$(dirname "$0")/.." && pwd)"
+if [ ! -d "$PROJ/src" ] || [ ! -f "$PROJ/requirements.txt" ]; then
+    echo "ERROR: Invalid project root: $PROJ" >&2
+    exit 1
+fi
 VENV="$PROJ/.venv/bin/python"
 LOGDIR="$PROJ/data"
 LOCK_FILE="/tmp/signals-sync.lock"

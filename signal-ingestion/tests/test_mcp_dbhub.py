@@ -29,26 +29,35 @@ import pytest
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-_HARDCODED_NODE = "/home/yaywang/.nvm/versions/node/v24.14.0/bin/node"
-_HARDCODED_ENTRY = "/home/yaywang/.nvm/versions/node/v24.14.0/lib/node_modules/@bytebase/dbhub/dist/index.js"
 
 
-def _find_node() -> Path:
-    """Find Node.js >= 24 binary."""
+def _find_node() -> tuple[Path | None, str]:
+    """Find Node.js >= 24 binary. Returns (path, skip_reason) — path is None if unsuitable."""
     env = os.environ.get("DBHUB_NODE")
     if env:
-        return Path(env)
-    which = shutil.which("node")
-    if which:
-        return Path(which)
-    return Path(_HARDCODED_NODE)
+        p = Path(env)
+    else:
+        which = shutil.which("node")
+        if not which:
+            return None, "Node.js not found: set DBHUB_NODE or add node to PATH"
+        p = Path(which)
+    try:
+        ver = subprocess.run(
+            [str(p), "--version"], capture_output=True, text=True, timeout=5
+        )
+        major = int(ver.stdout.strip().lstrip("v").split(".")[0])
+        if major < 24:
+            return None, f"Node.js >= 24 required (found: {ver.stdout.strip()})"
+    except Exception:
+        return None, f"Cannot determine Node.js version at {p}"
+    return p, ""
 
 
-def _find_dbhub_entry() -> Path:
-    """Find dbhub entry point."""
+def _find_dbhub_entry() -> tuple[Path | None, str]:
+    """Find dbhub entry point. Returns (path, skip_reason) — path is None if not found."""
     env = os.environ.get("DBHUB_ENTRY")
     if env:
-        return Path(env)
+        return Path(env), ""
     try:
         result = subprocess.run(
             ["npm", "root", "-g"], capture_output=True, text=True, timeout=5
@@ -56,18 +65,27 @@ def _find_dbhub_entry() -> Path:
         if result.returncode == 0:
             candidate = Path(result.stdout.strip()) / "@bytebase/dbhub/dist/index.js"
             if candidate.exists():
-                return candidate
+                return candidate, ""
     except Exception:
         pass
-    return Path(_HARDCODED_ENTRY)
+    return None, "dbhub not found: set DBHUB_ENTRY or install globally via npm"
 
 
-DBHUB_NODE = _find_node()
-DBHUB_ENTRY = _find_dbhub_entry()
+_NODE_PATH, _NODE_SKIP = _find_node()
+_ENTRY_PATH, _ENTRY_SKIP = _find_dbhub_entry()
+DBHUB_NODE: Path = _NODE_PATH  # type: ignore[assignment]
+DBHUB_ENTRY: Path = _ENTRY_PATH  # type: ignore[assignment]
 DBHUB_TOML = Path(__file__).parent.parent / "dbhub.toml"
 SIGNALS_DB = Path(__file__).parent.parent / "data/signals.db"
 
-pytestmark = pytest.mark.mcp
+_skip_reason = _NODE_SKIP or _ENTRY_SKIP or ""
+pytestmark = [
+    pytest.mark.mcp,
+    pytest.mark.skipif(
+        _NODE_PATH is None or _ENTRY_PATH is None,
+        reason=_skip_reason or "dbhub dependencies not available",
+    ),
+]
 
 # ---------------------------------------------------------------------------
 # Helpers

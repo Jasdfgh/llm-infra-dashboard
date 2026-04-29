@@ -9,8 +9,8 @@ throttles calls against two GitHub buckets:
 
 GitHub returns the **same** ``X-RateLimit-*`` header family on every
 endpoint, so the calling adapter must tell us which bucket the most
-recent response belonged to. See appendix A of
-``design/module_1_3_architecture.md`` for the rationale.
+recent response belonged to.
+GitHub API limits: REST 5000/hr per token, Search 30/min global.
 
 Usage::
 

@@ -1,7 +1,7 @@
 """GitHub REST adapter — httpx direct calls to GitHub v3 REST API.
 
 Implements ``SourceAdapter`` for GitHub issues and pull requests, covering the
-three sync modes described in ``design/module_1_3_architecture.md`` D4:
+three sync modes described in D4 (incremental update pipeline):
 
 * **incremental** → :meth:`GitHubAdapter.discover` with ``since=...``
   (GET ``/repos/{o}/{r}/issues?since=...&state=all&labels=...``)
@@ -10,19 +10,19 @@ three sync modes described in ``design/module_1_3_architecture.md`` D4:
   (GET ``/repos/{o}/{r}/issues/{n}`` + optional ``/pulls/{n}`` for PR extras)
 
 Comments come from :meth:`GitHubAdapter.fetch_comments` (D4 Step 6), discovery
-scans from :meth:`GitHubAdapter.search_issues` (附录 A, search bucket, 30/min),
-and conditional requests from :meth:`GitHubAdapter.check_etag` (附录 A ETag).
+scans from :meth:`GitHubAdapter.search_issues` (Appendix A, search bucket, 30/min),
+and conditional requests from :meth:`GitHubAdapter.check_etag` (Appendix A, ETag).
 
 Design constraints (from the task spec):
 
 * **No body truncation** — ``RawSignal.raw_data`` preserves the GitHub JSON
-  as-is so ``Normalizer`` can decide what to keep (D2.1 "完整 body，不截断").
+  as-is so ``Normalizer`` can decide what to keep (D2.1: "preserve full body, no truncation").
 * **No raw_data trimming** in the adapter layer; noise compression is the
   Normalizer's job.
 * Every request goes through a shared :class:`GitHubRateLimiter` (buckets
   ``"rest"`` and ``"search"``) and is retried up to 3 times on transient
   failures (403 rate-limit, 5xx, network errors) with exponential backoff
-  (D4 失败恢复 场景 C).
+  (D4 failure recovery, Scenario C).
 """
 
 from __future__ import annotations
@@ -54,7 +54,7 @@ from .base import SourceAdapter, SourceConfig
 
 _MAX_RETRIES = 3
 _DEFAULT_PER_PAGE = 100
-_SEARCH_MAX_RESULTS = 1000  # GitHub Search API hard limit (附录 A)
+_SEARCH_MAX_RESULTS = 1000  # GitHub Search API hard limit (Appendix A)
 _ACCEPT_HEADER = "application/vnd.github+json"
 
 
@@ -66,8 +66,8 @@ _ACCEPT_HEADER = "application/vnd.github+json"
 class GitHubAdapter(SourceAdapter):
     """GitHub REST adapter.
 
-    See ``design/module_1_3_architecture.md`` D4 (增量更新流程 Step 3 + Step 6)
-    and 附录 A (GitHub API 调用策略).
+    See D4 (incremental update pipeline, Step 3 + Step 6).
+    GitHub API call strategy: REST 5000/hr per token, Search 30/min global, ETag conditional requests.
 
     Usage::
 
@@ -207,7 +207,7 @@ class GitHubAdapter(SourceAdapter):
         """Wrap a raw GitHub JSON item into a ``RawSignal`` *without* trimming.
 
         ``raw_data`` is the exact API response dict so the Normalizer owns all
-        trim/noise decisions (see D2.1 "noise 压缩由 Normalizer 做").
+        trim/noise decisions (see D2.1: "noise compression is the Normalizer's job").
         """
         number = item.get("number")
         if number is None:
@@ -246,7 +246,7 @@ class GitHubAdapter(SourceAdapter):
     ) -> httpx.Response:
         """Execute a single HTTP request with retries.
 
-        Retry policy (see D4 失败恢复 场景 C):
+        Retry policy (see D4 failure recovery, Scenario C):
 
         * **403 rate-limit** → sleep until ``x-ratelimit-reset`` + 1s, retry
           up to 3 times.
@@ -710,7 +710,7 @@ class GitHubAdapter(SourceAdapter):
         """Discovery-mode search (``GET /search/issues``).
 
         Used for D4 Step 3b and D3.4 discovery mode. The search bucket has a
-        30-requests-per-minute limit (附录 A) and GitHub hard-caps results at
+        30-requests-per-minute limit (Appendix A) and GitHub hard-caps results at
         1000 regardless of pagination.
 
         Args:
@@ -726,7 +726,7 @@ class GitHubAdapter(SourceAdapter):
 
         Notes:
             * 422 → logs a warning and stops iteration (private-repo search
-              restriction — 附录 A "ROCm/aiter 是私有仓库, search API 返回 422").
+              restriction — Appendix A: "ROCm/aiter is a private repo, search API returns 422").
             * Uses the ``"search"`` rate-limit bucket.
         """
         per_page = max(1, min(int(per_page), 100))
@@ -844,7 +844,7 @@ class GitHubAdapter(SourceAdapter):
     ) -> tuple[int, Any, dict[str, str]]:
         """Conditional request using ETag / Last-Modified.
 
-        See 附录 A "ETag 条件请求". A 304 response does NOT consume REST
+        See Appendix A "ETag conditional requests". A 304 response does NOT consume REST
         quota on GitHub.
 
         This method does NOT update the ``etag_cache`` table — that's the

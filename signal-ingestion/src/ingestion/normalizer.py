@@ -1,7 +1,6 @@
 """Source-agnostic normalizer: ``RawSignal → Signal``, ``RawComment → Comment``.
 
-Implements D4 Step 4 (标准化 + 引用提取) from
-``design/module_1_3_architecture.md``. The Normalizer is the sole translation
+Implements D4 Step 4 (standardization + reference extraction). The Normalizer is the sole translation
 layer between source-platform JSON shapes and the unified Signal envelope
 (D2.1). All downstream consumers (repository, orchestrator, Module 2 API) see
 only ``Signal`` / ``Comment``; they are insulated from the quirks of the

@@ -2,15 +2,17 @@
 
 Tracks AMD vs NVIDIA capability gaps in open-source LLM infrastructure repos.
 
-接口版本控制
-----------
-下游模块可 pin 接口版本，确保上游不会偷偷 break 你的代码::
+Interface Versioning
+--------------------
+Downstream modules can pin the interface version to ensure upstream
+changes do not silently break your code::
 
     from src import INTERFACE_VERSION, INTERFACE_CONTRACT
     assert INTERFACE_VERSION == "1.0", f"unexpected interface v{INTERFACE_VERSION}"
 
-INTERFACE_CONTRACT 描述了每个核心方法的返回字段和边界行为约定。
-当我们做 breaking change 时会 bump INTERFACE_VERSION，并在 CHANGELOG 里说明。
+INTERFACE_CONTRACT describes the return fields and boundary-behavior
+contract of each core method. We bump INTERFACE_VERSION on breaking
+changes and document them in the CHANGELOG.
 """
 
 __version__ = "0.1.0"

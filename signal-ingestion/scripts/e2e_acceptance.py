@@ -3,7 +3,7 @@
 Independent of the GitHub API so we can verify all 6 MVP acceptance
 criteria without hitting rate limits. Uses the same orchestrator code
 path as scripts/sync_github.py but injects a MockAdapter that replays
-demo/signals/*.json as raw GitHub payloads.
+tests/fixtures/signals/*.json as raw GitHub payloads.
 
 Not intended for production — this is a self-test only.
 """
@@ -46,12 +46,12 @@ logging.basicConfig(
 
 
 # ---------------------------------------------------------------------------
-# MockAdapter: replays demo JSON as if it came from GitHub API
+# MockAdapter: replays fixture JSON as if it came from GitHub API
 # ---------------------------------------------------------------------------
 
 
 def _demo_issue_to_raw(d: dict, *, repo: str) -> dict:
-    """Turn demo/signals/issue_*.json into a raw GitHub API-shaped dict."""
+    """Turn fixtures/signals/issue_*.json into a raw GitHub API-shaped dict."""
     raw = {
         "number": d["number"],
         "title": d["title"],
@@ -72,7 +72,7 @@ def _demo_issue_to_raw(d: dict, *, repo: str) -> dict:
 
 
 def _demo_pr_to_raw(d: dict, *, repo: str) -> dict:
-    """Turn demo/signals/pr_*.json into a raw API-shaped dict."""
+    """Turn fixtures/signals/pr_*.json into a raw API-shaped dict."""
     raw = {
         "number": d["number"],
         "title": d["title"],
@@ -101,7 +101,7 @@ def _demo_pr_to_raw(d: dict, *, repo: str) -> dict:
 
 
 def _discovery_item_to_raw(d: dict, *, repo: str) -> dict:
-    """Turn one item from demo/signals/discovery_*.json into raw shape."""
+    """Turn one item from fixtures/signals/discovery_*.json into raw shape."""
     is_pr = "/pull/" in d.get("html_url", "")
     raw = {
         "number": d["number"],
@@ -126,7 +126,7 @@ def _discovery_item_to_raw(d: dict, *, repo: str) -> dict:
 
 
 class MockAdapter:
-    """Replays demo/signals/*.json as adapter outputs.
+    """Replays tests/fixtures/signals/*.json as adapter outputs.
 
     `extra_comments_for_39303`: simulate that N new comments appeared on
     issue #39303 since the last sync, so ChangeDetector emits NEW_COMMENT.
@@ -141,7 +141,7 @@ class MockAdapter:
         self._load_demos()
 
     def _load_demos(self) -> None:
-        base = _REPO_ROOT / "demo/signals"
+        base = _REPO_ROOT / "tests/fixtures/signals"
         self.issue_data = json.loads((base / "issue_39303.json").read_text())
         self.pr_data = json.loads((base / "pr_39616.json").read_text())
         discovery = json.loads((base / "discovery_vllm_rocm.json").read_text())

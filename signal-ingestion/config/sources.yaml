@@ -3,13 +3,13 @@
 # ============================================================================
 # MVP (4/24): only vllm-project/vllm with rocm label.
 # Future: add sglang, ROCm/aiter, triton, etc. — zero code changes, just add here.
-# See design/module_1_3_architecture.md D6.
+# SourceAdapter configuration — repos, labels, keywords, sync schedule.
 
 github:
   api_base: "https://api.github.com"
   api_version: "2022-11-28"
 
-  # Rate limit policy (see D6.3 + github_mcp_investigation.md §9)
+  # Rate limits: GitHub REST 5000/hr per token, Search 30/min global.
   rate_limit:
     rest_per_hour: 5000       # Personal Access Token
     search_per_minute: 30     # Search API is the hard bottleneck

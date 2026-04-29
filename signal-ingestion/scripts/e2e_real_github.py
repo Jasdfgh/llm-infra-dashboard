@@ -206,8 +206,8 @@ async def main() -> int:
           f"{'PASS' if hash_ok == total and bad_v == 0 else 'FAIL'}")
     print(f"[3] FTS5 'aiter MLA': {r.get('total', 0)} hits — "
           f"{'PASS' if r.get('total', 0) >= 1 else 'FAIL'}")
-    print(f"[4] change detection: see _e2e_acceptance.py (mock) — PASS")
-    print(f"[5] signal_changes: {c.execute if False else 'see _e2e_acceptance.py'}")
+    print(f"[4] change detection: see e2e_acceptance.py (mock) — PASS")
+    print(f"[5] signal_changes: {c.execute if False else 'see e2e_acceptance.py'}")
     print(f"[6] cache files: {n_issues + n_pulls} files, 39303 present: "
           f"{'PASS' if key.exists() else 'FAIL'}")
 

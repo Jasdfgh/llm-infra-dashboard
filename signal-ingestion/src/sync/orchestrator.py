@@ -1,7 +1,7 @@
 """SyncOrchestrator — wires adapter → normalizer → change_detector → repository.
 
 Implements the end-to-end pipeline described in
-`design/module_1_3_architecture.md` D4 (增量更新流程) + D3.4 (代码级接口).
+D4 (incremental update pipeline) + D3.4 (code-level interfaces).
 
 Responsibilities:
   1. Open a SyncRun record, resolve `since` for incremental mode.

@@ -6,10 +6,9 @@ exposed to the rest of the ingestion pipeline through a subclass of
 speak only this interface — no source-specific logic (auth, API paths,
 pagination, rate-limiting quirks) leaks past the adapter boundary.
 
-See ``design/module_1_3_architecture.md`` D6 ("SourceAdapter interface")
-for the full contract.
+SourceAdapter contract: subclass must implement discover(), fetch_detail(), fetch_comments().
 
-Enhancement over D6 (documented here, not in the design doc yet):
+Enhancement over the D6 interface:
 
 - ``discover`` is typed as ``AsyncIterator[RawSignal]`` (an async
   generator) instead of ``list[RawSignal]``. The scheduler can then
@@ -76,7 +75,7 @@ class SourceAdapter(ABC):
     3. **Stay async.** Even if the underlying call is sync, wrap it so
        callers can ``await`` uniformly.
 
-    See ``design/module_1_3_architecture.md`` D6 for the full contract.
+    See the SourceAdapter ABC above for the full contract.
     """
 
     # Abstract class-level attribute: subclasses MUST assign, e.g.

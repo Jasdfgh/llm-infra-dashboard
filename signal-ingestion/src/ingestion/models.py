@@ -1,7 +1,7 @@
 """Pydantic models — the single source of truth for data shapes.
 
 All modules import from here. Keep aligned with
-`design/module_1_3_architecture.md` D2.1 (Signal envelope), D2.3 (Change event),
+D2.1 (Signal envelope), D2.3 (Change event),
 D2.4 (Sync run record), D5 (ChangeType enum).
 
 Design notes:
@@ -122,7 +122,7 @@ class PRChangedFiles(BaseModel):
     additions: int = 0
     deletions: int = 0
     files: list[dict[str, Any]] = Field(default_factory=list)
-    # Optional triage classification (demo/signals/pr_39616.json convention)
+    # Optional triage classification (tests/fixtures/signals/pr_39616.json convention)
     rocm_specific: list[str] = Field(default_factory=list)
     cuda_specific: list[str] = Field(default_factory=list)
     shared: list[str] = Field(default_factory=list)

@@ -4,7 +4,7 @@ This is the thin persistence layer for Module 1+3. It speaks only Pydantic
 models (see `src.ingestion.models`) and SQLite rows; higher layers
 (Orchestrator, Search, API) compose on top.
 
-Key design decisions (see `design/module_1_3_architecture.md`):
+Key design decisions:
 
 * **Per-signal transactions** (D4 Step 7): each write method wraps its SQL
   in ``with self._conn:`` so a single failure doesn't abort a whole batch.
@@ -211,7 +211,7 @@ class SignalRepository:
 
         Use when several write methods must commit together as one unit
         (e.g. upsert_signal + upsert_comments + append_changes + upsert_refs
-        for a single signal — the D4 Step 7 "每条 signal 独立事务" contract).
+        for a single signal — the D4 Step 7 "per-signal independent transaction" contract).
 
         While active, individual write methods' ``_txn()`` becomes a no-op
         so that only this outer ``with self._conn:`` controls commit/rollback.
@@ -254,7 +254,7 @@ class SignalRepository:
         JSON-encodes all dict/list fields and fills the redundant GitHub
         physical columns (``github_state``, ``github_labels``,
         ``github_is_pr``, ``github_comment_count``) for index-backed
-        filters (see D2.2 comment on "冗余物理列").
+        filters (see D2.2 comment on "redundant physical columns").
         """
         gh = signal.github
         tw = signal.twitter

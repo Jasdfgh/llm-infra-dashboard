@@ -3,11 +3,11 @@
 Implements the read-side API on top of ``SignalRepository``:
 
 * ``search()``     — multi-filter query (FTS5 if ``query`` given, else
-                     indexed column scan). See 附录 D (组合查询内部路由).
+                     indexed column scan). See Appendix D (combined query internal routing).
 * ``get_detail()`` — full signal + comments, with all JSON fields parsed.
 * ``get_feed()``   — D3.1 pull-based incremental feed for Module 2.
 
-Routing summary (附录 D)::
+Routing summary (Appendix D)::
 
     query non-empty → SELECT s.* FROM signals_fts fts
                       JOIN signals s ON s.rowid = fts.rowid
@@ -20,7 +20,7 @@ Routing summary (附录 D)::
 
 Pagination for ``get_feed`` is keyset-based (``(last_synced_at,
 signal_id)``) — NOT ``OFFSET`` — because OFFSET scales linearly on
-large tables (附录 D note at the bottom).
+large tables (Appendix D, note at the bottom).
 
 Column-physical filters (``github_state``, ``github_labels``, …) are
 used instead of ``json_extract(github_json, '$.state')`` for 10–100x
@@ -283,7 +283,7 @@ class SignalSearch:
             gap_ids: each gap_id must appear in ``gap_ids`` JSON.
             sort: ``relevance`` falls back to ``updated`` if no ``query``.
             limit / offset: paging. Prefer ``get_feed`` for Module 2 —
-                OFFSET is slow on large tables (附录 D).
+                OFFSET is slow on large tables (Appendix D).
 
         Returns::
 
@@ -435,7 +435,7 @@ class SignalSearch:
         """Return the ``ORDER BY`` tail for the given sort mode.
 
         ``relevance`` only makes sense when FTS5 MATCH was used; fall
-        back to ``updated_at DESC`` otherwise (附录 D).
+        back to ``updated_at DESC`` otherwise (Appendix D).
         """
         if sort == "created":
             return "s.created_at DESC"
@@ -515,7 +515,7 @@ class SignalSearch:
         index ``idx_signals_feed`` backs this perfectly when
         ``classified is False``. The cursor encodes the last row's key,
         and the next page continues with ``(key) > (cursor_key)``.
-        OFFSET is avoided per 附录 D.
+        OFFSET is avoided per Appendix D.
         """
         t0 = time.perf_counter()
         limit = max(1, min(limit, 500))  # D3.1: max 500

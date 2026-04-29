@@ -1,23 +1,32 @@
 # dbhub — SQLite MCP server for signals.db
 # See: https://github.com/bytebase/dbhub
 #
-# 给 Module 4 Agent (Coordinator) 做 ad-hoc 只读 SQL 查询。
-# 未来迁移到 Postgres 只需改 dsn 一行（参数占位符需从 ? 改为 $N）。
+# Provides ad-hoc read-only SQL queries for Module 4 Agent (Coordinator).
+# To migrate to Postgres later, just change the dsn line (and switch
+# parameter placeholders from ? to $N).
 #
-# 环境要求：Node.js >= 24（npm install -g @bytebase/dbhub@latest）
-# 如果遇到 "Cannot use import statement outside a module"，
-# 说明 Node 版本太低——检查 ~/.cursor/mcp.json 里的 command 是否指向 v24 的 node。
+# Requirements: Node.js >= 24 (npm install -g @bytebase/dbhub@latest)
+# If you see "Cannot use import statement outside a module", the Node
+# version is too old — verify that the `command` in ~/.cursor/mcp.json
+# points to a v24 node binary.
 #
-# 注意事项:
-# - FTS5 影子表 (signals_fts_config/_data/_docsize/_idx/_content) 会出现在
-#   search_objects 里。Agent prompt 里加一句"忽略 *_fts_* 表"即可。
-# - WAL 模式下 readonly=true 时 better-sqlite3 用 O_RDONLY 打开，
-#   写端（sync_github.py）正在写入时读端看到的可能有微小延迟，不影响分析。
+# Notes:
+# - FTS5 shadow tables (signals_fts_config/_data/_docsize/_idx/_content)
+#   will appear in search_objects. Add "ignore *_fts_* tables" to the
+#   agent prompt.
+# - In WAL mode with readonly=true, better-sqlite3 opens with O_RDONLY.
+#   Reads may lag slightly behind the writer (sync_github.py); this does
+#   not affect analysis.
 
 [[sources]]
 id = "signals"
 description = "AMD/NVIDIA competitive intelligence signals (SQLite + FTS5)"
-dsn = "sqlite:///home/yaywang/my-llm-infra-dashboard/data/signals.db"
+# DSN uses a relative path — resolves from dbhub's working directory.
+# HTTP mode: start_dbhub_server.sh does `cd "$PROJ"` before launch.
+# stdio mode (Cursor/Claude Code): ensure cwd is the project root, e.g.
+#   - use start_dbhub_server.sh as the command, or
+#   - set "cwd" in mcp.json (Cursor), or wrap with `cd /path/to/project &&`.
+dsn = "sqlite:///data/signals.db"
 
 # ============================================================================
 # Built-in Tools

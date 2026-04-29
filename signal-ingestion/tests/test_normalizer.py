@@ -1,7 +1,7 @@
 """Unit tests for ``src.ingestion.normalizer``.
 
 Constructs GitHub-API-shaped ``raw_data`` dicts from the demo fixtures
-(``demo/signals/issue_39303.json``, ``pr_39616.json``) and drives them
+(``tests/fixtures/signals/issue_39303.json``, ``pr_39616.json``) and drives them
 through ``Normalizer.normalize_signal`` / ``normalize_comment``.
 
 The demo JSON is in an already-processed format (``body_text``, ``comment_count``,
@@ -32,7 +32,7 @@ from src.ingestion.normalizer import Normalizer
 # ---------------------------------------------------------------------------
 
 
-DEMO_DIR = Path(__file__).resolve().parents[1] / "demo" / "signals"
+DEMO_DIR = Path(__file__).resolve().parent / "fixtures" / "signals"
 
 
 @pytest.fixture(scope="module")

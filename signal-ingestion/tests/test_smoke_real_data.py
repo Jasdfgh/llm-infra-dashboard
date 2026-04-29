@@ -59,12 +59,12 @@ def writable_db(tmp_path):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# A 组：Vivi 真实工作流边界 (SM-12 ~ SM-20)
+# Group A: Vivi real-workflow edge cases (SM-12 ~ SM-20)
 # ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_sm12_empty_body_signals(real_db):
-    """空 body signal — get_detail 返回 body='', get_feed body_preview=''."""
+    """Empty body signal — get_detail returns body='', get_feed returns body_preview=''."""
     with SignalRepository(real_db) as repo:
         search = SignalSearch(repo)
         c = sqlite3.connect(str(real_db))
@@ -86,7 +86,7 @@ def test_sm12_empty_body_signals(real_db):
 
 
 def test_sm13_very_long_body(real_db):
-    """最长 body signal — get_detail 返回完整内容，不截断。"""
+    """Longest body signal — get_detail returns full content without truncation."""
     with SignalRepository(real_db) as repo:
         c = sqlite3.connect(str(real_db))
         row = c.execute(
@@ -102,7 +102,7 @@ def test_sm13_very_long_body(real_db):
 
 
 def test_sm14_comment_truncation_consistency(real_db):
-    """github_comment_count > stored comments — Vivi 能看到差值。"""
+    """github_comment_count > stored comments — Vivi can see the discrepancy."""
     with SignalRepository(real_db) as repo:
         c = sqlite3.connect(str(real_db))
         rows = c.execute("""
@@ -122,7 +122,7 @@ def test_sm14_comment_truncation_consistency(real_db):
 
 
 def test_sm15_bot_comment_ratio(real_db):
-    """Bot comments 存在且可区分 human/bot。"""
+    """Bot comments exist and human/bot are distinguishable."""
     with SignalRepository(real_db) as repo:
         c = sqlite3.connect(str(real_db))
         total = c.execute("SELECT COUNT(*) FROM signal_comments").fetchone()[0]
@@ -144,7 +144,7 @@ def test_sm15_bot_comment_ratio(real_db):
 
 
 def test_sm16_chinese_content_fts(real_db):
-    """FTS5 unicode61 tokenizer 处理 CJK 不崩溃。"""
+    """FTS5 unicode61 tokenizer handles CJK without crashing."""
     with SignalRepository(real_db) as repo:
         c = sqlite3.connect(str(real_db))
         cn_count = c.execute(
@@ -158,7 +158,7 @@ def test_sm16_chinese_content_fts(real_db):
 
 
 def test_sm17_classification_overwrite(writable_db):
-    """分类覆盖：后写入的分类覆盖先前的。"""
+    """Classification overwrite: later classification overwrites the previous one."""
     with SignalRepository(writable_db) as repo:
         c = sqlite3.connect(str(writable_db))
         sid = c.execute(
@@ -183,7 +183,7 @@ def test_sm17_classification_overwrite(writable_db):
 
 
 def test_sm18_batch_classify_100(writable_db):
-    """100 条 sequential update_classification — 不 database-is-locked。"""
+    """100 sequential update_classification calls — no database-is-locked errors."""
     with SignalRepository(writable_db) as repo:
         c = sqlite3.connect(str(writable_db))
         sids = [
@@ -202,7 +202,7 @@ def test_sm18_batch_classify_100(writable_db):
 
 
 def test_sm19_cross_repo_filter(real_db):
-    """search(repos=['sgl-project/sglang']) 只返回 sglang 结果。"""
+    """search(repos=['sgl-project/sglang']) returns only sglang results."""
     with SignalRepository(real_db) as repo:
         r = SignalSearch(repo).search(repos=["sgl-project/sglang"], limit=50)
         assert r["total"] > 0
@@ -211,7 +211,7 @@ def test_sm19_cross_repo_filter(real_db):
 
 
 def test_sm20_future_since_returns_empty(real_db):
-    """since=2099 的 feed 返回空集。"""
+    """Feed with since=2099 returns an empty set."""
     with SignalRepository(real_db) as repo:
         feed = SignalSearch(repo).get_feed(since="2099-01-01T00:00:00Z")
         assert len(feed["signals"]) == 0
@@ -219,7 +219,7 @@ def test_sm20_future_since_returns_empty(real_db):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# B 组：Zijun Agent 查询边界 (SM-21 ~ SM-27)
+# Group B: Zijun Agent query edge cases (SM-21 ~ SM-27)
 # ═══════════════════════════════════════════════════════════════════════════
 
 
@@ -231,7 +231,7 @@ def test_sm20_future_since_returns_empty(real_db):
     "key:value",
 ])
 def test_sm21_fts_special_chars(real_db, query):
-    """FTS5 特殊字符不崩溃，返回有效结果（无 FTS 错误）。"""
+    """FTS5 special characters don't crash; returns valid results (no FTS errors)."""
     with SignalRepository(real_db) as repo:
         r = SignalSearch(repo).search(query=query)
         assert isinstance(r["results"], list)
@@ -245,14 +245,14 @@ def test_sm21_fts_special_chars(real_db, query):
     '"unclosed phrase', "AND", "a b c d e f g h i j k l m n o p",
 ])
 def test_sm22_fts_degenerate_queries(real_db, query):
-    """退化查询不崩溃。"""
+    """Degenerate queries don't crash."""
     with SignalRepository(real_db) as repo:
         r = SignalSearch(repo).search(query=query)
         assert isinstance(r.get("results", []), list)
 
 
 def test_sm23_fts_very_long_query(real_db):
-    """超长 query（1000 字符）不崩溃不挂起。"""
+    """Very long query (1000 chars) doesn't crash or hang."""
     with SignalRepository(real_db) as repo:
         long_q = "AMD ROCm " * 100
         r = SignalSearch(repo).search(query=long_q)
@@ -260,14 +260,14 @@ def test_sm23_fts_very_long_query(real_db):
 
 
 def test_sm24_nonexistent_gap_id(real_db):
-    """不存在的 gap_id 查询返回 0 条。"""
+    """Non-existent gap_id query returns 0 results."""
     with SignalRepository(real_db) as repo:
         r = SignalSearch(repo).search(gap_ids=["nonexistent_gap_xyz_999"])
         assert r["total"] == 0
 
 
 def test_sm25_reconcile_refs(writable_db):
-    """reconcile_refs 填充 to_signal_id，不会增加未解析数。"""
+    """reconcile_refs populates to_signal_id without increasing unresolved count."""
     with SignalRepository(writable_db) as repo:
         c = sqlite3.connect(str(writable_db))
         unresolved_before = c.execute(
@@ -284,7 +284,7 @@ def test_sm25_reconcile_refs(writable_db):
 
 
 def test_sm26_cross_repo_fts_search(real_db):
-    """FTS5 搜索同时命中 vllm 和 sglang。"""
+    """FTS5 search hits both vllm and sglang."""
     with SignalRepository(real_db) as repo:
         r = SignalSearch(repo).search(query="speculative decoding AMD", limit=50)
         if r["total"] == 0:
@@ -294,7 +294,7 @@ def test_sm26_cross_repo_fts_search(real_db):
 
 
 def test_sm27_every_signal_has_new_signal_change(real_db):
-    """每条 signal 都有至少一条 new_signal change event。"""
+    """Every signal has at least one new_signal change event."""
     c = sqlite3.connect(str(real_db))
     total = c.execute("SELECT COUNT(*) FROM signals").fetchone()[0]
     with_change = c.execute("""
@@ -307,7 +307,7 @@ def test_sm27_every_signal_has_new_signal_change(real_db):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# C 组：Fuzz / 健壮性 (SM-28 ~ SM-32)
+# Group C: Fuzz / robustness (SM-28 ~ SM-32)
 # ═══════════════════════════════════════════════════════════════════════════
 
 
@@ -316,14 +316,14 @@ def test_sm27_every_signal_has_new_signal_change(real_db):
     "a*", "{braces}", "a + b", '""', "'''",
 ])
 def test_sm28_fts_malicious_syntax(real_db, query):
-    """恶意 FTS5 语法不崩溃。"""
+    """Malicious FTS5 syntax doesn't crash."""
     with SignalRepository(real_db) as repo:
         r = SignalSearch(repo).search(query=query)
         assert isinstance(r.get("results", []), list)
 
 
 def test_sm29_classification_extreme_params(writable_db):
-    """极端分类参数（空 gap_ids / 超长 category / 负 confidence）正常存储。"""
+    """Extreme classification params (empty gap_ids / very long category / negative confidence) are stored correctly."""
     with SignalRepository(writable_db) as repo:
         c = sqlite3.connect(str(writable_db))
         sid = c.execute("SELECT signal_id FROM signals LIMIT 1").fetchone()[0]
@@ -341,7 +341,7 @@ def test_sm29_classification_extreme_params(writable_db):
 
 
 def test_sm30_labels_sql_injection(real_db):
-    """参数化查询防止 labels SQL 注入。"""
+    """Parameterized queries prevent labels SQL injection."""
     with SignalRepository(real_db) as repo:
         r = SignalSearch(repo).search(labels=["rocm'; DROP TABLE signals;--"])
         assert r["total"] == 0
@@ -353,7 +353,7 @@ def test_sm30_labels_sql_injection(real_db):
     "x" * 10000, "github:test/test:issue:abc",
 ])
 def test_sm31_bad_signal_id(real_db, bad_id):
-    """畸形 signal_id — get_by_id 返回 None，get_changes 返回空 list。"""
+    """Malformed signal_id — get_by_id returns None, get_changes returns empty list."""
     with SignalRepository(real_db) as repo:
         assert repo.get_by_id(bad_id) is None
         changes = repo.get_changes(signal_id=bad_id)
@@ -361,7 +361,7 @@ def test_sm31_bad_signal_id(real_db, bad_id):
 
 
 def test_sm32_concurrent_read_write(writable_db):
-    """WAL 模式：读写并发不出错。"""
+    """WAL mode: concurrent reads and writes don't error."""
     errors: list[str] = []
 
     def reader():
