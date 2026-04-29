@@ -398,3 +398,57 @@ class TestContextManager:
         async with GitHubAdapter(token="test") as a:
             assert isinstance(a, GitHubAdapter)
         assert a._client.is_closed
+
+
+# ===================================================================
+# 24–25  401 handling with App token refresh
+# ===================================================================
+
+
+class TestUnauthorizedRetry:
+    """Tests for 401 handling with App token refresh."""
+
+    @pytest_asyncio.fixture
+    async def pool_adapter(self):
+        """Adapter wired with a mock TokenPool for 401-retry tests."""
+        from unittest.mock import MagicMock
+
+        pool = MagicMock()
+        pool.get_best_token = MagicMock(side_effect=["old_token", "new_token"])
+        pool.mark_token_unauthorized = MagicMock()
+        pool.update_token_state = MagicMock()
+
+        async with GitHubAdapter(token_pool=pool) as a:
+            yield a, pool
+
+    @pytest.fixture
+    def mock_pool_request(self, pool_adapter) -> tuple[AsyncMock, Any]:
+        adapter, pool = pool_adapter
+        m = AsyncMock()
+        adapter._client.request = m
+        return m, pool
+
+    async def test_401_triggers_mark_and_retry(self, pool_adapter, mock_pool_request):
+        """401 response should mark token unauthorized and retry immediately."""
+        mock_req, pool = mock_pool_request
+        mock_req.side_effect = [
+            _resp(401, json_data={"message": "Bad credentials"}),
+            _resp(200, json_data=_issue(42)),
+        ]
+
+        adapter, _ = pool_adapter
+        resp = await adapter._request("GET", "/repos/owner/repo/issues/42")
+
+        assert resp.status_code == 200
+        pool.mark_token_unauthorized.assert_called_once_with("old_token")
+        assert mock_req.call_count == 2
+
+    async def test_401_without_token_pool_returns_response(self, adapter, mock_request):
+        """Without token_pool, 401 is just returned (no retry)."""
+        mock_request.return_value = _resp(
+            401, json_data={"message": "Bad credentials"}
+        )
+        resp = await adapter._request("GET", "/repos/owner/repo/issues/42")
+
+        assert resp.status_code == 401
+        assert mock_request.call_count == 1

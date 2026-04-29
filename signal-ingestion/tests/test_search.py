@@ -531,3 +531,91 @@ class TestGetFeed:
         feed = search.get_feed(since="2026-01-01T00:00:00Z")
         assert "total_token_estimate" in feed["meta"]
         assert feed["meta"]["total_token_estimate"] >= sample_signal.body_token_estimate
+
+
+# ---------------------------------------------------------------------------
+# gap_ids EXISTS filter
+# ---------------------------------------------------------------------------
+
+
+class TestGapIdsFilter:
+    """Tests for gap_ids filter using EXISTS on signal_gap_ids table."""
+
+    def test_gap_ids_filter(self, repo, search):
+        """gap_ids filter returns only signals classified with that gap."""
+        sig_with_gap = _make_signal(
+            "100", source_number=100,
+            title="Signal with gap",
+            body="classified signal body",
+            content_hash="g1" * 32,
+        )
+        sig_without_gap = _make_signal(
+            "101", source_number=101,
+            title="Signal without gap",
+            body="unclassified signal body",
+            content_hash="g2" * 32,
+        )
+        repo.upsert_signal(sig_with_gap)
+        repo.upsert_signal(sig_without_gap)
+        repo.update_classification(
+            sig_with_gap.signal_id,
+            gap_ids=["GAP-001", "GAP-002"],
+            signal_category="bug",
+            confidence=0.95,
+            classifier_version="v0.1",
+        )
+
+        result = search.search(gap_ids=["GAP-001"])
+        ids = {r["signal_id"] for r in result["results"]}
+        assert sig_with_gap.signal_id in ids
+        assert sig_without_gap.signal_id not in ids
+
+    def test_gap_ids_filter_multiple(self, repo, search):
+        """Multiple gap_ids require ALL to match (AND semantics)."""
+        sig_both = _make_signal(
+            "110", source_number=110,
+            title="Both gaps",
+            body="body",
+            content_hash="gm1" * 32,
+        )
+        sig_one = _make_signal(
+            "111", source_number=111,
+            title="One gap only",
+            body="body",
+            content_hash="gm2" * 32,
+        )
+        repo.upsert_signal(sig_both)
+        repo.upsert_signal(sig_one)
+        repo.update_classification(
+            sig_both.signal_id,
+            gap_ids=["GAP-A", "GAP-B"],
+            signal_category="feature",
+            confidence=0.8,
+            classifier_version="v0.1",
+        )
+        repo.update_classification(
+            sig_one.signal_id,
+            gap_ids=["GAP-A"],
+            signal_category="bug",
+            confidence=0.7,
+            classifier_version="v0.1",
+        )
+
+        result = search.search(gap_ids=["GAP-A", "GAP-B"])
+        ids = {r["signal_id"] for r in result["results"]}
+        assert sig_both.signal_id in ids
+        assert sig_one.signal_id not in ids
+
+    def test_gap_ids_no_match(self, repo, search):
+        """Non-existent gap_id returns 0 results."""
+        sig = _make_signal(
+            "120", source_number=120,
+            title="Some signal",
+            body="body",
+            content_hash="gn" * 32,
+        )
+        repo.upsert_signal(sig)
+
+        result = search.search(gap_ids=["NONEXISTENT-GAP"])
+        assert result["total"] == 0
+        assert result["results"] == []

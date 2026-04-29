@@ -6,30 +6,21 @@
 
 本脚本演示 Agent 常见的 6 类查询（通过 Python API 直调）。
 
-MCP 使用方式:
-  本脚本演示 Python 直调接口。如果通过 MCP（dbhub）访问，
-  相同功能对应以下工具：
+MCP 使用方式（推荐，不需要 Python）：
+  Signals Service MCP 提供 12 个工具，覆盖查询+同步+管理。
+  本脚本演示 Python 直调接口，对应的 MCP 工具如下：
     search_signals(query)        → 本脚本的 "搜索" 部分
     get_signal_detail(signal_id) → "详情" 部分
     get_signal_changes(signal_id) → "变更历史" 部分
     get_gap_signals(gap_id)      → "gap 关联" 部分
+    get_stats()                  → "聚合统计" 部分
     execute_sql(sql)             → 任意只读 SQL
 
-  MCP 配置见 dbhub.toml（项目根目录）。
+  MCP 配置（在 ~/.cursor/mcp.json 的 mcpServers 中添加）：
+    同机器：  "signals-service": { "url": "http://localhost:8082/mcp" }
+    内网：    "signals-service": { "url": "http://<server-ip>:8082/mcp" }
 
-MCP 使用方式（不需要 Python）：
-  1. 确保 ~/.cursor/mcp.json 里有 signals-db 配置（见 dbhub.toml）
-  2. 重启 Cursor
-  3. 在对话中直接让 Agent 用以下工具：
-     - search_signals(query="aiter MLA")
-     - get_signal_detail(signal_id="github:vllm-project/vllm:issue:39303")
-     - get_signal_changes(signal_id="...", limit=20)
-     - get_gap_signals(gap_id="gap_001")
-     - execute_sql(sql="SELECT COUNT(*) FROM signals")
-
-远程 MCP（HTTP 模式，Vivi/Zijun 在其他机器上用）：
-  npx @bytebase/dbhub@latest --transport http --port 8080 --config dbhub.toml
-  然后 MCP client 连接 http://<your-ip>:8080/mcp
+  完整接入教程见 examples/mcp_service_guide.md
 
 接口版本:
     from src import INTERFACE_VERSION  # pin 到 "1.0"

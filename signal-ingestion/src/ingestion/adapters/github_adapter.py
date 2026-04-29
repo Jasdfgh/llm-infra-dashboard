@@ -280,6 +280,10 @@ class GitHubAdapter(SourceAdapter):
                 current_token: str | None = None
                 if self._token_pool:
                     current_token = self._token_pool.get_best_token()
+                    if current_token is None:
+                        raise RuntimeError(
+                            "TokenPool: all tokens unavailable (mint failed or exhausted)"
+                        )
                     req_headers["Authorization"] = f"Bearer {current_token}"
 
                 resp = await self._client.request(
@@ -290,7 +294,7 @@ class GitHubAdapter(SourceAdapter):
                 )
                 self._rate_limiter.update_from_headers(bucket, resp.headers)
 
-                if self._token_pool and current_token:
+                if self._token_pool and current_token and bucket != "search":
                     remaining_str = resp.headers.get("x-ratelimit-remaining")
                     reset_str = resp.headers.get("x-ratelimit-reset")
                     if remaining_str is not None and reset_str is not None:
@@ -301,7 +305,19 @@ class GitHubAdapter(SourceAdapter):
                         except (TypeError, ValueError):
                             pass
 
+                if resp.status_code == 401 and self._token_pool and current_token:
+                    self._token_pool.mark_token_unauthorized(current_token)
+                    if attempt >= _MAX_RETRIES:
+                        return resp
+                    logger.warning(
+                        "GitHub 401 on %s (token expired?), refreshing (%s/%s)",
+                        url, attempt + 1, _MAX_RETRIES,
+                    )
+                    continue  # immediate retry with refreshed token
+
                 if self._is_rate_limit_403(resp):
+                    if self._token_pool and current_token and bucket != "search":
+                        self._token_pool.update_token_state(current_token, 0, 0)
                     if attempt >= _MAX_RETRIES:
                         logger.warning(
                             "GitHub rate-limited on %s after %s retries",
@@ -309,6 +325,16 @@ class GitHubAdapter(SourceAdapter):
                             _MAX_RETRIES,
                         )
                         return resp
+                    if self._token_pool and bucket != "search":
+                        next_token = self._token_pool.get_best_token()
+                        if next_token is not None and next_token != current_token:
+                            logger.info(
+                                "GitHub 403 on %s, rotating to next token (%s/%s)",
+                                url,
+                                attempt + 1,
+                                _MAX_RETRIES,
+                            )
+                            continue
                     reset_ts = resp.headers.get("x-ratelimit-reset") or "0"
                     try:
                         wait = max(backoff, max(0, int(reset_ts) - int(time.time())) + 1)

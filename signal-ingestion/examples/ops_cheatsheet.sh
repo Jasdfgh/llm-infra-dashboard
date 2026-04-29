@@ -34,16 +34,26 @@ echo "GITHUB_PERSONAL_ACCESS_TOKEN=ghp_xxxxx" > .env
 .venv/bin/python scripts/sync_github.py --repo vllm-project/vllm --mode targeted --target 39303,39616 --include-comments
 
 # ══════════════════════════════════════════════════════════
-# 定时同步 — crontab -e 添加以下行
+# 定时同步 — systemd timer（已配置，自动运行）
 # ══════════════════════════════════════════════════════════
-# vllm 每 2 小时增量
-# 0 */2 * * * cd /home/yaywang/my-llm-infra-dashboard && .venv/bin/python scripts/sync_github.py --repo vllm-project/vllm --labels rocm --include-comments >> data/sync.log 2>&1
+# 当前已通过 systemd user timer 自动化，不需要 crontab：
+#   signals-sync.timer        — 每 2h 增量同步（调 incremental_sync.sh）
+#   signals-logrotate.timer   — 每日日志轮转
 #
-# sglang 每 4 小时增量
-# 0 */4 * * * cd /home/yaywang/my-llm-infra-dashboard && .venv/bin/python scripts/sync_github.py --repo sgl-project/sglang --labels amd --include-comments >> data/sync.log 2>&1
-#
-# vllm 每日凌晨 2 点全量（catch up 可能漏掉的）
-# 0 2 * * * cd /home/yaywang/my-llm-infra-dashboard && .venv/bin/python scripts/sync_github.py --repo vllm-project/vllm --labels rocm --mode full --include-comments >> data/sync.log 2>&1
+# 查看状态：
+systemctl --user status signals-sync.timer
+systemctl --user list-timers
+
+# 手动触发增量同步：
+bash scripts/incremental_sync.sh
+
+# 手动触发全量同步（耗时较长）：
+# nohup bash scripts/full_sync_and_report.sh > data/full_sync_master.log 2>&1 &
+
+# 通过 MCP 触发同步（在 Cursor 里让 Agent 执行）：
+#   trigger_sync(repo="vllm-project/vllm", mode="incremental")
+#   trigger_sync_all()
+#   sync_status()
 
 # ══════════════════════════════════════════════════════════
 # Vivi (Module 2) 的典型工作流
@@ -106,25 +116,25 @@ sqlite3 data/signals.db "SELECT source_number, author, SUBSTR(title,1,70) FROM s
 # MCP 服务（给 Agent 用）
 # ══════════════════════════════════════════════════════════
 
-# ── dbhub 首次安装（只需一次）──
-# 需要 Node.js >= 24 和 C++ 编译工具链
-# sudo apt install build-essential python3  # 如果没有 gcc/make
-export PATH="/home/yaywang/.nvm/versions/node/v24.14.0/bin:$PATH"
-npm install -g @bytebase/dbhub@latest
+# Signals Service MCP — 12 个工具，systemd 常驻，端口 8082
+# 完整接入教程见 examples/mcp_service_guide.md
 
-# ── 验证 dbhub 能连接 signals.db ──
-dbhub --transport http --port 8080 --config dbhub.toml
-# 浏览器打开 http://localhost:8080 看到 Workbench UI = 成功
-# Ctrl+C 停止
+# ── 查看服务状态 ──
+bash scripts/signals_status.sh
+systemctl --user status signals-sync-mcp.service
+systemctl --user status signals-dbhub.service
 
-# ── Cursor 配置（已配好，重启 Cursor 即可）──
-# 配置在 ~/.cursor/mcp.json 的 "signals-db" 段
-# 注意：command 必须是 node 绝对路径，不能用 npx（会走 Cursor 内置 v20）
-# 6 个工具：search_signals / get_signal_detail / get_signal_changes / get_gap_signals / execute_sql / search_objects
+# ── 重启服务（代码更新后需要）──
+systemctl --user restart signals-sync-mcp.service
+systemctl --user restart signals-dbhub.service
 
-# 远程 HTTP 模式（Vivi/Zijun 在其他机器上用任何 MCP client 连）
-# npx @bytebase/dbhub@latest --transport http --port 8080 --config dbhub.toml
-# 然后 MCP client 连 http://<your-ip>:8080/mcp
+# ── Cursor/Claude Code MCP 配置 ──
+# 在 ~/.cursor/mcp.json 的 mcpServers 中添加：
+#   同机器：  "signals-service": { "url": "http://localhost:8082/mcp" }
+#   内网：    "signals-service": { "url": "http://<server-ip>:8082/mcp" }
+#
+# dbhub（后备只读 SQL 通道，端口 8081）：
+#   "signals-dbhub": { "url": "http://<server-ip>:8081/mcp" }
 
 # ══════════════════════════════════════════════════════════
 # 代码文件实时读取（不存到 DB，按需读）
@@ -175,7 +185,7 @@ asyncio.run(m())
 # ══════════════════════════════════════════════════════════
 # 测试
 # ══════════════════════════════════════════════════════════
-.venv/bin/python -m pytest tests/ -q -k "not network"         # 全部（~247 case, 16s）
+.venv/bin/python -m pytest tests/ -q -k "not network and not mcp_dbhub and not e2e_agent"  # 全部（~340 case, ~10min）
 .venv/bin/python -m pytest tests/test_smoke_downstream.py -v   # 只跑业务冒烟
 .venv/bin/python -m pytest tests/test_smoke_real_data.py -v    # 真实数据 fuzz
 
@@ -184,5 +194,5 @@ asyncio.run(m())
 # ══════════════════════════════════════════════════════════
 # 1. 直接跑 sync（不需要改任何代码或配置文件）：
 .venv/bin/python scripts/sync_github.py --repo ROCm/aiter --labels "" --mode full --include-comments
-# 2. （可选）加到 config/sources.yaml 做记录
-# 3. 加到 crontab 定时拉
+# 2. 加到 config/sources.yaml（systemd timer 和 MCP trigger_sync_all 会自动包含）
+# 3. 重启 MCP 服务使配置生效：systemctl --user restart signals-sync-mcp.service

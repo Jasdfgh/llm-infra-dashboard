@@ -229,3 +229,78 @@ def test_sm11_cache_db_consistency(fixture_db):
             db_row = repo.get_by_id(sid)
             assert db_row is not None, f"cache has {sid} but DB doesn't"
             assert db_row["title"] == data["title"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Vivi (Module 2) complete workflow
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestViviFullWorkflow:
+    """Module 2 (Signal Classifier) complete workflow via Python API."""
+
+    def test_vivi_feed_classify_verify(self, fixture_db):
+        """Vivi's full loop: get_feed -> classify -> feed no longer returns it."""
+        with SignalRepository(fixture_db) as repo:
+            search = SignalSearch(repo)
+            # 1. Get unclassified feed
+            feed = search.get_feed(since="2000-01-01", classified=False, limit=10)
+            assert feed["pagination"]["total"] > 0
+            first_id = feed["signals"][0]["signal_id"]
+
+            # 2. Classify it
+            repo.update_classification(
+                first_id,
+                gap_ids=["gap_test_001"],
+                signal_category="amd_gap",
+                confidence=0.95,
+                classifier_version="test_v1",
+            )
+
+            # 3. Verify: same feed query no longer returns this signal
+            feed2 = search.get_feed(since="2000-01-01", classified=False, limit=10)
+            ids_after = [s["signal_id"] for s in feed2["signals"]]
+            assert first_id not in ids_after
+
+            # 4. Verify: classified=True feed DOES contain it
+            feed3 = search.get_feed(since="2000-01-01", classified=True, limit=10)
+            ids_classified = [s["signal_id"] for s in feed3["signals"]]
+            assert first_id in ids_classified
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Agent (Module 4) query workflow
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestAgentQueryWorkflow:
+    """Module 4 (Agent) typical query patterns via Python API."""
+
+    def test_search_then_detail_then_changes(self, fixture_db):
+        """Agent flow: search -> pick first -> get_detail -> get_changes."""
+        with SignalRepository(fixture_db) as repo:
+            search = SignalSearch(repo)
+            # 1. Search
+            results = search.search(query="aiter MLA", limit=5)
+            # 2. If results, get detail
+            if results["total"] > 0:
+                sid = results["results"][0]["signal_id"]
+                detail = search.get_detail(sid, include_comments=True)
+                assert detail is not None
+                assert "title" in detail
+                # 3. Get changes
+                changes = repo.get_changes(signal_id=sid)
+                assert isinstance(changes, list)
+
+    def test_filter_by_repo_and_state(self, fixture_db):
+        """Agent narrows down by repo + state."""
+        with SignalRepository(fixture_db) as repo:
+            search = SignalSearch(repo)
+            results = search.search(
+                repos=["vllm-project/vllm"], state="open", limit=10
+            )
+            for sig in results["results"]:
+                assert (
+                    sig.get("source_repo") == "vllm-project/vllm"
+                    or "vllm" in sig.get("source_repo", "")
+                )

@@ -129,7 +129,7 @@ description = "Maximum number of change records to return"
 default = 50
 
 # Tool 4: get_gap_signals — signals associated with a competitive gap
-# gap_ids is stored as a JSON array string; uses LIKE pattern matching.
+# Uses the signal_gap_ids auxiliary table for correct lookups.
 [[tools]]
 name = "get_gap_signals"
 source = "signals"
@@ -141,7 +141,7 @@ statement = """
          s.github_labels, s.github_comment_count, s.updated_at, s.version,
          s.tags, SUBSTR(s.body, 1, 200) AS body_preview
   FROM signals s
-  WHERE s.gap_ids LIKE '%"' || ? || '"%'
+  WHERE EXISTS (SELECT 1 FROM signal_gap_ids g WHERE g.signal_id = s.signal_id AND g.gap_id = ?)
   ORDER BY s.updated_at DESC
   LIMIT ?
 """

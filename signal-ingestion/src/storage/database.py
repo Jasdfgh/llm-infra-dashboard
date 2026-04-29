@@ -72,6 +72,7 @@ _DDL_STATEMENTS: tuple[str, ...] = (
     "CREATE INDEX IF NOT EXISTS idx_signals_synced ON signals(last_synced_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_signals_created ON signals(created_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_signals_type_state ON signals(source_type, github_state)",
+    "CREATE INDEX IF NOT EXISTS idx_signals_repo_state ON signals(source_repo, github_state, updated_at DESC)",
     # Partial index: Module 2 consumes the unclassified feed in FIFO order.
     """
     CREATE INDEX IF NOT EXISTS idx_signals_feed
@@ -213,6 +214,82 @@ _DDL_STATEMENTS: tuple[str, ...] = (
         cached_at      TEXT    NOT NULL
     )
     """,
+    # ── signal_labels: many-to-many, extracted from github_labels JSON ──
+    """
+    CREATE TABLE IF NOT EXISTS signal_labels (
+        signal_id TEXT NOT NULL REFERENCES signals(signal_id) ON DELETE CASCADE,
+        label     TEXT NOT NULL,
+        PRIMARY KEY (signal_id, label)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_signal_labels_label ON signal_labels(label, signal_id)",
+    # ── signal_gap_ids: many-to-many, extracted from gap_ids JSON ───────
+    """
+    CREATE TABLE IF NOT EXISTS signal_gap_ids (
+        signal_id TEXT NOT NULL REFERENCES signals(signal_id) ON DELETE CASCADE,
+        gap_id    TEXT NOT NULL,
+        PRIMARY KEY (signal_id, gap_id)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_signal_gap_ids_gap ON signal_gap_ids(gap_id, signal_id)",
+    # ── Triggers: auto-populate signal_labels from github_labels JSON ───
+    "DROP TRIGGER IF EXISTS signals_labels_ai",
+    """
+    CREATE TRIGGER signals_labels_ai AFTER INSERT ON signals
+    WHEN json_valid(new.github_labels) AND json_type(new.github_labels) = 'array'
+    BEGIN
+        INSERT OR IGNORE INTO signal_labels(signal_id, label)
+        SELECT new.signal_id, value
+        FROM json_each(new.github_labels);
+    END
+    """,
+    "DROP TRIGGER IF EXISTS signals_labels_au",
+    """
+    CREATE TRIGGER signals_labels_au AFTER UPDATE OF github_labels ON signals
+    WHEN new.github_labels IS NOT old.github_labels
+    BEGIN
+        DELETE FROM signal_labels WHERE signal_id = new.signal_id;
+        INSERT OR IGNORE INTO signal_labels(signal_id, label)
+        SELECT new.signal_id, value
+        FROM json_each(new.github_labels)
+        WHERE json_valid(new.github_labels) AND json_type(new.github_labels) = 'array';
+    END
+    """,
+    "DROP TRIGGER IF EXISTS signals_labels_ad",
+    """
+    CREATE TRIGGER signals_labels_ad AFTER DELETE ON signals BEGIN
+        DELETE FROM signal_labels WHERE signal_id = old.signal_id;
+    END
+    """,
+    # ── Triggers: auto-populate signal_gap_ids from gap_ids JSON ────────
+    "DROP TRIGGER IF EXISTS signals_gaps_ai",
+    """
+    CREATE TRIGGER signals_gaps_ai AFTER INSERT ON signals
+    WHEN json_valid(new.gap_ids) AND json_type(new.gap_ids) = 'array'
+    BEGIN
+        INSERT OR IGNORE INTO signal_gap_ids(signal_id, gap_id)
+        SELECT new.signal_id, value
+        FROM json_each(new.gap_ids);
+    END
+    """,
+    "DROP TRIGGER IF EXISTS signals_gaps_au",
+    """
+    CREATE TRIGGER signals_gaps_au AFTER UPDATE OF gap_ids ON signals
+    WHEN new.gap_ids IS NOT old.gap_ids
+    BEGIN
+        DELETE FROM signal_gap_ids WHERE signal_id = new.signal_id;
+        INSERT OR IGNORE INTO signal_gap_ids(signal_id, gap_id)
+        SELECT new.signal_id, value
+        FROM json_each(new.gap_ids)
+        WHERE json_valid(new.gap_ids) AND json_type(new.gap_ids) = 'array';
+    END
+    """,
+    "DROP TRIGGER IF EXISTS signals_gaps_ad",
+    """
+    CREATE TRIGGER signals_gaps_ad AFTER DELETE ON signals BEGIN
+        DELETE FROM signal_gap_ids WHERE signal_id = old.signal_id;
+    END
+    """,
 )
 
 
@@ -271,5 +348,25 @@ def init_db(db_path: str | Path = DEFAULT_DB_PATH) -> None:
         with conn:
             for stmt in _DDL_STATEMENTS:
                 conn.execute(stmt)
+
+            # Backfill signal_labels / signal_gap_ids for databases that had
+            # rows before these tables+triggers were created.  INSERT OR IGNORE
+            # makes this idempotent — harmless on subsequent runs.
+            conn.execute("""
+                INSERT OR IGNORE INTO signal_labels(signal_id, label)
+                SELECT s.signal_id, j.value
+                FROM signals s, json_each(s.github_labels) j
+                WHERE s.github_labels IS NOT NULL
+                  AND json_valid(s.github_labels)
+                  AND json_type(s.github_labels) = 'array'
+            """)
+            conn.execute("""
+                INSERT OR IGNORE INTO signal_gap_ids(signal_id, gap_id)
+                SELECT s.signal_id, j.value
+                FROM signals s, json_each(s.gap_ids) j
+                WHERE s.gap_ids IS NOT NULL
+                  AND json_valid(s.gap_ids)
+                  AND json_type(s.gap_ids) = 'array'
+            """)
     finally:
         conn.close()

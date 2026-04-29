@@ -121,3 +121,95 @@ def test_force_rebuild(tmp_path: Path) -> None:
         assert rows == []
     finally:
         conn.close()
+
+
+# ── 6. signal_labels auto-population triggers ─────────────────────────
+
+_SIGNAL_INSERT_SQL = (
+    "INSERT INTO signals "
+    "(signal_id, source_type, source_url, title, body, "
+    "created_at, updated_at, first_seen_at, last_synced_at, "
+    "content_hash, github_labels) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+)
+_SIGNAL_COLS = ("http://x", "title", "body", "2026-01-01", "2026-01-01",
+                "2026-01-01", "2026-01-01", "abc")
+
+
+def _insert_signal(conn, sig_id: str, labels_json: str | None, source_type: str = "github_issue") -> None:
+    """Helper: insert a minimal signal row with given github_labels JSON."""
+    conn.execute(
+        _SIGNAL_INSERT_SQL,
+        (sig_id, source_type, *_SIGNAL_COLS, labels_json),
+    )
+    conn.commit()
+
+
+def _get_labels(conn, sig_id: str) -> list[str]:
+    return [
+        r[0]
+        for r in conn.execute(
+            "SELECT label FROM signal_labels WHERE signal_id = ? ORDER BY label",
+            (sig_id,),
+        ).fetchall()
+    ]
+
+
+class TestLabelsTrigger:
+    """Tests for signal_labels auto-population triggers."""
+
+    def test_insert_populates_labels(self, tmp_path: Path) -> None:
+        """INSERT a signal with github_labels -> signal_labels auto-filled."""
+        db = tmp_path / "test.db"
+        init_db(db)
+        conn = get_connection(db)
+        _insert_signal(conn, "sig1", '["rocm","bug","amd"]')
+        assert _get_labels(conn, "sig1") == ["amd", "bug", "rocm"]
+        conn.close()
+
+    def test_update_rebuilds_labels(self, tmp_path: Path) -> None:
+        """UPDATE github_labels -> signal_labels rebuilt."""
+        db = tmp_path / "test.db"
+        init_db(db)
+        conn = get_connection(db)
+        _insert_signal(conn, "sig1", '["a","b"]')
+        assert _get_labels(conn, "sig1") == ["a", "b"]
+
+        conn.execute(
+            "UPDATE signals SET github_labels = ? WHERE signal_id = ?",
+            ('["x","y","z"]', "sig1"),
+        )
+        conn.commit()
+        assert _get_labels(conn, "sig1") == ["x", "y", "z"]
+        conn.close()
+
+    def test_delete_cleans_labels(self, tmp_path: Path) -> None:
+        """DELETE signal -> signal_labels cleaned."""
+        db = tmp_path / "test.db"
+        init_db(db)
+        conn = get_connection(db)
+        _insert_signal(conn, "sig1", '["a","b"]')
+        assert len(_get_labels(conn, "sig1")) == 2
+
+        conn.execute("DELETE FROM signals WHERE signal_id = ?", ("sig1",))
+        conn.commit()
+        assert _get_labels(conn, "sig1") == []
+        conn.close()
+
+    def test_null_labels_no_trigger(self, tmp_path: Path) -> None:
+        """NULL github_labels -> no rows in signal_labels."""
+        db = tmp_path / "test.db"
+        init_db(db)
+        conn = get_connection(db)
+        _insert_signal(conn, "sig1", None)
+        assert _get_labels(conn, "sig1") == []
+        conn.close()
+
+    def test_empty_array_no_trigger(self, tmp_path: Path) -> None:
+        """'[]' github_labels -> no rows in signal_labels."""
+        db = tmp_path / "test.db"
+        init_db(db)
+        conn = get_connection(db)
+        _insert_signal(conn, "sig1", "[]")
+        assert _get_labels(conn, "sig1") == []
+        conn.close()

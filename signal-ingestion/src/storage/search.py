@@ -15,8 +15,8 @@ Routing summary (附录 D)::
     query empty    → SELECT s.* FROM signals s
                       WHERE 1=1 AND <filters…>
 
-    labels=[L]     → s.github_labels LIKE '%"L"%'   (JSON substring)
-    gap_ids=[G]    → s.gap_ids LIKE '%"G"%'
+    labels=[L]     → EXISTS (SELECT 1 FROM signal_labels WHERE signal_id=s.signal_id AND label=L)
+    gap_ids=[G]    → EXISTS (SELECT 1 FROM signal_gap_ids WHERE signal_id=s.signal_id AND gap_id=G)
 
 Pagination for ``get_feed`` is keyset-based (``(last_synced_at,
 signal_id)``) — NOT ``OFFSET`` — because OFFSET scales linearly on
@@ -340,17 +340,21 @@ class SignalSearch:
             where.append(f"s.source_type IN ({placeholders})")
             params.extend(source_types)
 
-        # JSON array contains checks — exploit that our dumps produce
-        # ``"label"`` substrings (no escaping needed for typical labels).
         if labels:
             for lab in labels:
-                where.append("s.github_labels LIKE ?")
-                params.append(f'%"{lab}"%')
+                where.append(
+                    "EXISTS (SELECT 1 FROM signal_labels sl "
+                    "WHERE sl.signal_id = s.signal_id AND sl.label = ?)"
+                )
+                params.append(lab)
 
         if gap_ids:
             for g in gap_ids:
-                where.append("s.gap_ids LIKE ?")
-                params.append(f'%"{g}"%')
+                where.append(
+                    "EXISTS (SELECT 1 FROM signal_gap_ids sg "
+                    "WHERE sg.signal_id = s.signal_id AND sg.gap_id = ?)"
+                )
+                params.append(g)
 
         if state and state != "all":
             where.append("s.github_state = ?")

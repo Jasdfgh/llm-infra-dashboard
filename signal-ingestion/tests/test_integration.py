@@ -584,3 +584,74 @@ class TestRealGitHub:
         st = result.status
         status_str = st.value if hasattr(st, "value") else st
         assert status_str in ("completed", "partial")
+
+
+# ============================================================================
+# Group 3: build_default_orchestrator env var loading
+# ============================================================================
+
+
+class TestBuildOrchestratorEnv:
+    """Tests for build_default_orchestrator env var loading."""
+
+    @pytest.fixture(autouse=True)
+    def _clean_github_env(self, monkeypatch):
+        """Remove all GITHUB_* env vars so .env pollution doesn't leak in."""
+        monkeypatch.delenv("GITHUB_TOKENS", raising=False)
+        for idx in range(1, 21):
+            for suffix in ("ID", "INSTALLATION_ID", "PEM_PATH"):
+                monkeypatch.delenv(f"GITHUB_APP_{idx}_{suffix}", raising=False)
+
+    def test_github_tokens_creates_pat_pool(self, tmp_path, monkeypatch):
+        """GITHUB_TOKENS=a,b,c creates a 3-token PAT pool."""
+        monkeypatch.setenv("GITHUB_TOKENS", "ghp_aaa,ghp_bbb,ghp_ccc")
+        init_db(tmp_path / "test.db")
+        from src.sync.orchestrator import build_default_orchestrator
+
+        orch, repo = build_default_orchestrator(db_path=tmp_path / "test.db")
+        assert orch.adapter._token_pool is not None
+        assert orch.adapter._token_pool.pool_size == 3
+        repo.close()
+
+    def test_github_app_env_creates_app_entries(self, tmp_path, monkeypatch):
+        """GITHUB_APP_1_* env vars create app entries in pool."""
+        pem_path = tmp_path / "fake.pem"
+        pem_path.write_text("fake-key")
+        monkeypatch.setenv("GITHUB_APP_1_ID", "123")
+        monkeypatch.setenv("GITHUB_APP_1_INSTALLATION_ID", "456")
+        monkeypatch.setenv("GITHUB_APP_1_PEM_PATH", str(pem_path))
+        init_db(tmp_path / "test.db")
+        from src.sync.orchestrator import build_default_orchestrator
+
+        orch, repo = build_default_orchestrator(db_path=tmp_path / "test.db")
+        assert orch.adapter._token_pool is not None
+        assert orch.adapter._token_pool.pool_size == 1
+        repo.close()
+
+    def test_mixed_pat_and_app(self, tmp_path, monkeypatch):
+        """PATs + App entries coexist in the pool."""
+        pem_path = tmp_path / "fake.pem"
+        pem_path.write_text("fake-key")
+        monkeypatch.setenv("GITHUB_TOKENS", "ghp_aaa")
+        monkeypatch.setenv("GITHUB_APP_1_ID", "123")
+        monkeypatch.setenv("GITHUB_APP_1_INSTALLATION_ID", "456")
+        monkeypatch.setenv("GITHUB_APP_1_PEM_PATH", str(pem_path))
+        init_db(tmp_path / "test.db")
+        from src.sync.orchestrator import build_default_orchestrator
+
+        orch, repo = build_default_orchestrator(db_path=tmp_path / "test.db")
+        assert orch.adapter._token_pool is not None
+        assert orch.adapter._token_pool.pool_size == 2
+        repo.close()
+
+    def test_missing_pem_skips_app(self, tmp_path, monkeypatch):
+        """Missing PEM file logs warning and skips that app."""
+        monkeypatch.setenv("GITHUB_APP_1_ID", "123")
+        monkeypatch.setenv("GITHUB_APP_1_INSTALLATION_ID", "456")
+        monkeypatch.setenv("GITHUB_APP_1_PEM_PATH", "/nonexistent/fake.pem")
+        init_db(tmp_path / "test.db")
+        from src.sync.orchestrator import build_default_orchestrator
+
+        orch, repo = build_default_orchestrator(db_path=tmp_path / "test.db")
+        assert orch.adapter._token_pool is None
+        repo.close()

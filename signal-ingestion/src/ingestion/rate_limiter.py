@@ -88,7 +88,12 @@ class GitHubRateLimiter:
 
     _VALID_BUCKETS: tuple[str, ...] = ("rest", "search")
 
-    def __init__(self, *, low_remaining_threshold: int = 10) -> None:
+    def __init__(
+        self,
+        *,
+        low_remaining_threshold: int = 10,
+        pool_mode: bool = False,
+    ) -> None:
         """Initialize with optimistic defaults.
 
         Args:
@@ -97,6 +102,12 @@ class GitHubRateLimiter:
                 sleeps until the bucket's ``reset_at`` (plus a safety
                 buffer) before returning. Default ``10`` gives us a
                 small cushion before GitHub would 403 us.
+            pool_mode: when ``True``, :meth:`acquire` skips the global
+                sleep-on-low logic for the ``rest`` bucket.  Rate
+                limiting is instead handled by :class:`TokenPool`'s
+                per-token remaining tracking + the adapter's 403 retry.
+                The ``search`` bucket (shared across all tokens) still
+                blocks normally.
         """
         now = time.time()
         self._buckets: dict[str, _BucketState] = {
@@ -110,6 +121,7 @@ class GitHubRateLimiter:
             ),
         }
         self._low_threshold: int = low_remaining_threshold
+        self._pool_mode: bool = pool_mode
         self._total_api_calls: int = 0
         self._lock: asyncio.Lock = asyncio.Lock()
 
@@ -141,9 +153,10 @@ class GitHubRateLimiter:
         self._check_bucket(bucket)
 
         sleep_for: float = 0.0
+        skip_sleep = self._pool_mode and bucket == "rest"
         async with self._lock:
             state = self._buckets[bucket]
-            if state.remaining < self._low_threshold:
+            if not skip_sleep and state.remaining < self._low_threshold:
                 delta = state.reset_at - time.time()
                 sleep_for = max(0.0, delta) + _RESET_SAFETY_BUFFER_SECS
 
@@ -247,6 +260,8 @@ class GitHubRateLimiter:
 
 
 _LOW_REMAINING_THRESHOLD_POOL: int = 100
+_APP_TOKEN_REFRESH_BUFFER_SECS: float = 300.0  # refresh 5 min before expiry
+_MINT_COOLDOWN_SECS: float = 300.0  # back off 5 min after a failed mint
 
 
 @dataclass
@@ -257,17 +272,74 @@ class _TokenState:
     label: str
     remaining: int = _REST_DEFAULT_LIMIT
     reset_at: float = 0.0
+    # GitHub App fields (None for plain PATs)
+    app_id: str | None = None
+    private_key: str | None = None
+    installation_id: str | None = None
+    expires_at: float = float("inf")  # PATs never expire
+    _mint_failed: bool = False
+    _quarantined: bool = False
+    _last_mint_attempt: float = 0.0
+
+
+def _mint_installation_token(
+    app_id: str, private_key: str, installation_id: str,
+) -> tuple[str, float]:
+    """Generate a GitHub App installation access token (sync HTTP call).
+
+    Returns (token_string, expires_at_epoch).
+    """
+    import httpx as _httpx
+
+    try:
+        import jwt as _jwt
+    except ImportError as exc:
+        raise ImportError(
+            "PyJWT + cryptography required for GitHub App tokens: "
+            "pip install PyJWT cryptography"
+        ) from exc
+
+    now = int(time.time())
+    payload = {"iat": now - 60, "exp": now + 600, "iss": app_id}
+    jwt_token = _jwt.encode(payload, private_key, algorithm="RS256")
+
+    resp = _httpx.post(
+        f"https://api.github.com/app/installations/{installation_id}/access_tokens",
+        headers={
+            "Authorization": f"Bearer {jwt_token}",
+            "Accept": "application/vnd.github+json",
+        },
+        timeout=30.0,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+
+    token = data["token"]
+    expires_str = data.get("expires_at", "")
+    if expires_str:
+        from datetime import datetime, timezone
+        expires_at = datetime.fromisoformat(
+            expires_str.replace("Z", "+00:00")
+        ).timestamp()
+    else:
+        expires_at = time.time() + 3600  # fallback: 1 hour
+
+    return token, expires_at
 
 
 class TokenPool:
     """Multi-token rotation for GitHub API rate limit management.
 
-    See design doc D6.3. Maintains per-token remaining/reset state.
-    Picks the token with most remaining quota. When all tokens are
-    exhausted, returns the one whose reset time is soonest (so the
-    caller waits the least).
+    Supports two token types:
 
-    Backward compatible: single token = pool of 1.
+    * **PAT entries**: ``{"token": "ghp_xxx", "label": "..."}`` — static,
+      never expire.
+    * **App entries**: ``{"app_id": "123", "private_key": "...",
+      "installation_id": "456", "label": "..."}`` — installation tokens
+      are minted on first use and auto-refreshed 5 minutes before expiry.
+
+    Picks the token with most remaining quota. When all tokens are
+    exhausted, returns the one whose reset time is soonest.
     """
 
     def __init__(
@@ -276,44 +348,119 @@ class TokenPool:
         *,
         low_threshold: int = _LOW_REMAINING_THRESHOLD_POOL,
     ) -> None:
-        """
-        Args:
-            tokens: list of ``{"token": "ghp_xxx", "label": "primary"}`` dicts.
-                    At least 1 required.
-            low_threshold: When **all** tokens have ``remaining`` below this
-                value, :meth:`get_best_token` falls back to earliest-reset
-                selection.
-        """
         if not tokens:
             raise ValueError("TokenPool requires at least 1 token")
-        self._states: dict[str, _TokenState] = {}
-        self._order: list[str] = []
-        for entry in tokens:
-            tok = entry["token"]
-            label = entry.get("label", tok[:8])
-            self._states[tok] = _TokenState(
-                token=tok, label=label, remaining=_REST_DEFAULT_LIMIT
-            )
-            self._order.append(tok)
+
+        self._states: dict[str, _TokenState] = {}  # key = label
+        self._token_to_label: dict[str, str] = {}   # "ghp_xxx" → label
         self._low_threshold = low_threshold
 
-    def get_best_token(self) -> str:
+        for i, entry in enumerate(tokens, 1):
+            if "app_id" in entry:
+                label = entry.get("label", f"app_{i}")
+                state = _TokenState(
+                    token="",  # will be minted on first get_best_token()
+                    label=label,
+                    app_id=entry["app_id"],
+                    private_key=entry["private_key"],
+                    installation_id=entry["installation_id"],
+                    expires_at=0.0,  # force immediate mint
+                )
+                self._states[label] = state
+            else:
+                tok = entry["token"]
+                label = entry.get("label", f"pat_{i}")
+                state = _TokenState(token=tok, label=label)
+                self._states[label] = state
+                self._token_to_label[tok] = label
+
+    def get_best_token(self) -> str | None:
         """Return the token with highest remaining quota.
 
-        If all tokens have ``remaining < threshold``, return the one whose
-        ``reset_at`` is soonest (so the caller waits the least).
+        App tokens are refreshed automatically when near expiry.
+        Returns ``None`` when every token is unavailable (e.g. all App
+        tokens failed their initial mint).
         """
-        above = [s for s in self._states.values() if s.remaining >= self._low_threshold]
+        now = time.time()
+        for state in self._states.values():
+            if state.app_id and state.expires_at < now + _APP_TOKEN_REFRESH_BUFFER_SECS:
+                self._refresh_app_token(state)
+
+        available = [s for s in self._states.values()
+                     if not (s._mint_failed and s.token == "")
+                     and not s._quarantined]
+        if not available:
+            return None
+
+        above = [s for s in available if s.remaining >= self._low_threshold]
         if above:
             best = max(above, key=lambda s: (s.remaining, -s.reset_at))
             return best.token
-        return min(self._states.values(), key=lambda s: s.reset_at).token
+        return min(available, key=lambda s: s.reset_at).token
 
     def update_token_state(self, token: str, remaining: int, reset: int) -> None:
         """Update state for a specific token after an API response."""
-        if token in self._states:
-            self._states[token].remaining = remaining
-            self._states[token].reset_at = float(reset)
+        label = self._token_to_label.get(token)
+        if label and label in self._states:
+            self._states[label].remaining = remaining
+            self._states[label].reset_at = float(reset)
+
+    def mark_token_unauthorized(self, token: str) -> None:
+        """Mark a token as unauthorized so it gets quarantined.
+
+        App tokens also get ``expires_at`` zeroed to trigger a refresh
+        attempt on the next :meth:`get_best_token` call.  PATs are
+        permanently quarantined for the lifetime of this pool (a revoked
+        PAT cannot be refreshed).
+        """
+        label = self._token_to_label.get(token)
+        if label and label in self._states:
+            state = self._states[label]
+            state._quarantined = True
+            state.remaining = 0
+            if state.app_id:
+                state.expires_at = 0.0  # force refresh attempt
+
+    def _refresh_app_token(self, state: _TokenState) -> None:
+        """Mint a new installation token, update indexes."""
+        assert state.app_id and state.private_key and state.installation_id
+
+        now = time.time()
+        if state._mint_failed and (now - state._last_mint_attempt) < _MINT_COOLDOWN_SECS:
+            return
+        state._last_mint_attempt = now
+
+        old_token = state.token
+        if old_token in self._token_to_label:
+            del self._token_to_label[old_token]
+
+        try:
+            new_token, expires_at = _mint_installation_token(
+                state.app_id, state.private_key, state.installation_id,
+            )
+            state.token = new_token
+            state.expires_at = expires_at
+            state.remaining = _REST_DEFAULT_LIMIT
+            state._mint_failed = False
+            state._quarantined = False
+            state._last_mint_attempt = 0.0
+            self._token_to_label[new_token] = state.label
+            import logging
+            logging.getLogger(__name__).info(
+                "Refreshed App token %s (expires %s)",
+                state.label,
+                time.strftime("%H:%M:%S", time.localtime(expires_at)),
+            )
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception(
+                "Failed to refresh App token %s", state.label,
+            )
+            if old_token and not state._quarantined:
+                self._token_to_label[old_token] = state.label
+            else:
+                state._mint_failed = True
+                state.remaining = 0
 
     @property
     def total_remaining(self) -> int:
@@ -326,10 +473,11 @@ class TokenPool:
         return len(self._states)
 
     def __repr__(self) -> str:
-        entries = ", ".join(
-            f"{s.label}({s.remaining})" for s in self._states.values()
-        )
-        return f"TokenPool([{entries}])"
+        entries = []
+        for s in self._states.values():
+            tag = "app" if s.app_id else "pat"
+            entries.append(f"{s.label}[{tag}]({s.remaining})")
+        return f"TokenPool([{', '.join(entries)}])"
 
 
 def _get_header(headers: Mapping[str, str], name: str) -> str | None:

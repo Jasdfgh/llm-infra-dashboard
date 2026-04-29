@@ -635,18 +635,42 @@ def build_default_orchestrator(
     from src.ingestion.rate_limiter import GitHubRateLimiter, TokenPool
 
     if token_pool is None:
+        entries: list[dict[str, str]] = []
+
         env_tokens = os.getenv("GITHUB_TOKENS", "").strip()
         if env_tokens:
-            entries = [
-                {"token": t.strip(), "label": f"token_{i}"}
+            entries.extend(
+                {"token": t.strip(), "label": f"pat_{i}"}
                 for i, t in enumerate(env_tokens.split(","), 1)
                 if t.strip()
-            ]
-            if entries:
-                token_pool = TokenPool(entries)
+            )
 
+        for idx in range(1, 21):
+            app_id = os.getenv(f"GITHUB_APP_{idx}_ID", "").strip()
+            inst_id = os.getenv(f"GITHUB_APP_{idx}_INSTALLATION_ID", "").strip()
+            pem_path = os.getenv(f"GITHUB_APP_{idx}_PEM_PATH", "").strip()
+            if not (app_id and inst_id and pem_path):
+                continue
+            pem_file = Path(pem_path).expanduser()
+            if not pem_file.exists():
+                import logging
+                logging.getLogger(__name__).warning(
+                    "GITHUB_APP_%s_PEM_PATH %s not found, skipping", idx, pem_file,
+                )
+                continue
+            entries.append({
+                "app_id": app_id,
+                "installation_id": inst_id,
+                "private_key": pem_file.read_text(),
+                "label": f"app_{idx}",
+            })
+
+        if entries:
+            token_pool = TokenPool(entries)
+
+    pool_mode = token_pool is not None and token_pool.pool_size > 1
     repository = SignalRepository(db_path=db_path)
-    rate_limiter = GitHubRateLimiter()
+    rate_limiter = GitHubRateLimiter(pool_mode=pool_mode)
     adapter = GitHubAdapter(
         token=token,
         token_pool=token_pool,
