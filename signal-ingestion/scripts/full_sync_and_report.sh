@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Full sync vllm + sglang → run benchmark → generate report
+# Full sync all repos from config/sources.yaml → run benchmark → generate report
 #
 # Usage: nohup bash scripts/full_sync_and_report.sh > data/full_sync_master.log 2>&1 &
 #
@@ -29,6 +29,8 @@ if ! flock -n 9; then
     exit 1
 fi
 
+PIPELINE_START=$(date +%s)
+
 echo "================================================================"
 echo "  FULL SYNC PIPELINE — started $(ts)"
 echo "  Server: $(uname -n) | $(nproc) cores | $(free -h | awk '/Mem:/{print $2}') RAM"
@@ -53,72 +55,94 @@ else:
 echo "  $PRE_STATS"
 echo ""
 
-# ─── Phase 1: vllm full sync ─────────────────────────────────────
-echo "================================================================"
-echo "[Phase 1] vllm-project/vllm FULL sync — started $(ts)"
-echo "================================================================"
-VLLM_START=$(date +%s)
+# ─── Read repos from config/sources.yaml ─────────────────────────
+repo_output=$("$VENV" -c "
+import yaml, sys
+try:
+    cfg = yaml.safe_load(open('$PROJ/config/sources.yaml'))
+    for r in cfg.get('github', {}).get('repos', []):
+        if isinstance(r, dict) and 'repo' in r:
+            print(r['repo'])
+except Exception as e:
+    print(f'ERROR: {e}', file=sys.stderr)
+    sys.exit(1)
+" 2>/dev/null)
+rc=$?
 
-$VENV "$PROJ/scripts/sync_github.py" \
-    --repo vllm-project/vllm \
-    --labels "" \
-    --mode full \
-    --include-comments \
-    --max-comments 100 \
-    --auto-init-db \
-    --log-level INFO \
-    2>&1 | tee "$DATA/sync_vllm_full.log"
+if [ "$rc" -ne 0 ] || [ -z "$repo_output" ]; then
+    echo "[$(ts)] ERROR: Could not read repos from config/sources.yaml (rc=$rc). Fix config and retry."
+    exit 1
+fi
 
-VLLM_END=$(date +%s)
-VLLM_ELAPSED=$(( VLLM_END - VLLM_START ))
-VLLM_HOURS=$(echo "scale=2; $VLLM_ELAPSED / 3600" | bc)
-echo ""
-echo "[Phase 1] vllm DONE — elapsed ${VLLM_ELAPSED}s (${VLLM_HOURS}h)"
-echo ""
+mapfile -t REPOS <<< "$repo_output"
 
-# ─── Phase 1.5: mid-sync stats ───────────────────────────────────
-echo "[Phase 1.5] Mid-sync DB stats ($(ts))"
-$VENV -c "
-import sqlite3, os
-c=sqlite3.connect('$DATA/signals.db')
-sigs=c.execute('SELECT COUNT(*) FROM signals').fetchone()[0]
-coms=c.execute('SELECT COUNT(*) FROM signal_comments').fetchone()[0]
-chgs=c.execute('SELECT COUNT(*) FROM signal_changes').fetchone()[0]
-refs=c.execute('SELECT COUNT(*) FROM signal_refs').fetchone()[0]
-sz=round(os.path.getsize('$DATA/signals.db')/1024/1024,1)
-print(f'  signals={sigs} comments={coms} changes={chgs} refs={refs} db={sz}MB')
-repos=c.execute('SELECT source_repo, COUNT(*) FROM signals GROUP BY source_repo').fetchall()
-for r in repos: print(f'    {r[0]}: {r[1]}')
-c.close()
-" 2>&1
+for repo in "${REPOS[@]}"; do
+    if ! [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+        echo "[$(ts)] ERROR: Invalid repo name in config: $repo"
+        exit 1
+    fi
+done
+
+TOTAL=${#REPOS[@]}
+echo "[$(ts)] Config loaded: $TOTAL repos to sync"
 echo ""
 
-# ─── Phase 2: sglang full sync ───────────────────────────────────
-echo "================================================================"
-echo "[Phase 2] sgl-project/sglang FULL sync — started $(ts)"
-echo "================================================================"
-SGLANG_START=$(date +%s)
+# ─── Sync all repos ──────────────────────────────────────────────
+succeeded=()
+failed=()
+declare -A REPO_TIMES
 
-$VENV "$PROJ/scripts/sync_github.py" \
-    --repo sgl-project/sglang \
-    --labels "" \
-    --mode full \
-    --include-comments \
-    --max-comments 100 \
-    --auto-init-db \
-    --log-level INFO \
-    2>&1 | tee "$DATA/sync_sglang_full.log"
+for i in "${!REPOS[@]}"; do
+    repo="${REPOS[$i]}"
+    phase=$((i + 1))
+    log_name="sync_${repo//\//_}_full.log"
 
-SGLANG_END=$(date +%s)
-SGLANG_ELAPSED=$(( SGLANG_END - SGLANG_START ))
-SGLANG_HOURS=$(echo "scale=2; $SGLANG_ELAPSED / 3600" | bc)
+    echo "================================================================"
+    echo "[Phase $phase/$TOTAL] $repo FULL sync — started $(ts)"
+    echo "================================================================"
+
+    REPO_START=$(date +%s)
+
+    if $VENV "$PROJ/scripts/sync_github.py" \
+        --repo "$repo" \
+        --labels "" \
+        --mode full \
+        --include-comments \
+        --max-comments 100 \
+        --auto-init-db \
+        --log-level INFO \
+        2>&1 | tee "$DATA/$log_name"; then
+        succeeded+=("$repo")
+    else
+        failed+=("$repo")
+    fi
+
+    REPO_END=$(date +%s)
+    REPO_ELAPSED=$((REPO_END - REPO_START))
+    REPO_HOURS=$(echo "scale=2; $REPO_ELAPSED / 3600" | bc)
+    REPO_TIMES["$repo"]=$REPO_ELAPSED
+
+    echo ""
+    echo "[Phase $phase/$TOTAL] $repo — done in ${REPO_ELAPSED}s (${REPO_HOURS}h)"
+    echo ""
+done
+
+# ─── Sync summary ────────────────────────────────────────────────
+echo "================================================================"
+echo "  SYNC SUMMARY"
+echo "  Succeeded: ${#succeeded[@]}/$TOTAL | Failed: ${#failed[@]}/$TOTAL"
+echo "================================================================"
+if [ ${#failed[@]} -gt 0 ]; then
+    echo "  Failed repos:"
+    for r in "${failed[@]}"; do
+        echo "    - $r"
+    done
+fi
 echo ""
-echo "[Phase 2] sglang DONE — elapsed ${SGLANG_ELAPSED}s (${SGLANG_HOURS}h)"
-echo ""
 
-# ─── Phase 3: Final DB stats ─────────────────────────────────────
+# ─── Final DB stats ──────────────────────────────────────────────
 echo "================================================================"
-echo "[Phase 3] Final DB stats ($(ts))"
+echo "[Post-sync] Final DB stats ($(ts))"
 echo "================================================================"
 FINAL_STATS=$($VENV -c "
 import sqlite3, os, json
@@ -165,8 +189,8 @@ c.close()
 echo "$FINAL_STATS"
 echo ""
 
-# ─── Phase 4: ANALYZE + WAL checkpoint ───────────────────────────
-echo "[Phase 4] Post-sync maintenance ($(ts))"
+# ─── Post-sync maintenance ────────────────────────────────────────
+echo "[Post-sync] ANALYZE + WAL checkpoint ($(ts))"
 $VENV -c "
 import sqlite3, time
 c=sqlite3.connect('$DATA/signals.db')
@@ -181,9 +205,9 @@ c.close()
 " 2>&1
 echo ""
 
-# ─── Phase 5: Benchmark ──────────────────────────────────────────
+# ─── Benchmark ────────────────────────────────────────────────────
 echo "================================================================"
-echo "[Phase 5] Running benchmark ($(ts))"
+echo "[Benchmark] Running benchmark ($(ts))"
 echo "================================================================"
 BENCH_START=$(date +%s)
 
@@ -193,15 +217,41 @@ $VENV "$PROJ/scripts/benchmark_db.py" --db-path "$DATA/signals.db" --iterations 
 BENCH_END=$(date +%s)
 BENCH_ELAPSED=$(( BENCH_END - BENCH_START ))
 echo ""
-echo "[Phase 5] Benchmark DONE — elapsed ${BENCH_ELAPSED}s"
+echo "[Benchmark] DONE — elapsed ${BENCH_ELAPSED}s"
 echo ""
 
-# ─── Phase 6: Generate markdown report ───────────────────────────
+# ─── Generate markdown report ─────────────────────────────────────
 TOTAL_END=$(date +%s)
-TOTAL_ELAPSED=$(( TOTAL_END - VLLM_START ))
+TOTAL_ELAPSED=$(( TOTAL_END - PIPELINE_START ))
 TOTAL_HOURS=$(echo "scale=2; $TOTAL_ELAPSED / 3600" | bc)
 
-echo "[Phase 6] Writing report to $REPORT"
+echo "[Report] Writing report to $REPORT"
+
+# Build timing table rows
+TIMING_ROWS=""
+for i in "${!REPOS[@]}"; do
+    repo="${REPOS[$i]}"
+    elapsed=${REPO_TIMES["$repo"]:-0}
+    hours=$(echo "scale=2; $elapsed / 3600" | bc)
+    status="OK"
+    for f in "${failed[@]}"; do
+        if [ "$f" = "$repo" ]; then status="FAILED"; break; fi
+    done
+    TIMING_ROWS+="| $repo | ${elapsed}s (${hours}h) | $status |
+"
+done
+
+# Build sync log tails
+SYNC_LOGS=""
+for repo in "${REPOS[@]}"; do
+    log_name="sync_${repo//\//_}_full.log"
+    SYNC_LOGS+="### ${repo} (last 20 lines)
+\`\`\`
+$(tail -20 "$DATA/$log_name" 2>/dev/null || echo "log not available")
+\`\`\`
+
+"
+done
 
 cat > "$REPORT" << REPORTEOF
 # Full Sync Report — $(date '+%Y-%m-%d')
@@ -209,16 +259,15 @@ cat > "$REPORT" << REPORTEOF
 > Auto-generated by \`scripts/full_sync_and_report.sh\`
 > Machine: $(uname -n) | $(nproc) cores | $(free -h | awk '/Mem:/{print $2}') RAM
 > Total pipeline time: ${TOTAL_ELAPSED}s (${TOTAL_HOURS}h)
+> Repos: ${#succeeded[@]} succeeded, ${#failed[@]} failed out of $TOTAL
 
 ---
 
 ## Timing
 
-| Phase | Elapsed | Notes |
+| Repo | Elapsed | Status |
 |---|---|---|
-| vllm full sync | ${VLLM_ELAPSED}s (${VLLM_HOURS}h) | \`--labels "" --mode full --max-comments 100\` |
-| sglang full sync | ${SGLANG_ELAPSED}s (${SGLANG_HOURS}h) | \`--labels "" --mode full --max-comments 100\` |
-| Benchmark | ${BENCH_ELAPSED}s | 500 iterations |
+${TIMING_ROWS}| **Benchmark** | **${BENCH_ELAPSED}s** | |
 | **Total** | **${TOTAL_ELAPSED}s (${TOTAL_HOURS}h)** | |
 
 ## Data Summary
@@ -233,27 +282,9 @@ $FINAL_STATS
 $(cat "$DATA/benchmark_full.log" 2>/dev/null || echo "benchmark log not available")
 \`\`\`
 
-## Sync Logs (tail)
+## Sync Logs
 
-### vllm (last 30 lines)
-\`\`\`
-$(tail -30 "$DATA/sync_vllm_full.log" 2>/dev/null || echo "log not available")
-\`\`\`
-
-### sglang (last 30 lines)
-\`\`\`
-$(tail -30 "$DATA/sync_sglang_full.log" 2>/dev/null || echo "log not available")
-\`\`\`
-
-## Scale Metrics
-
-| Metric | Actual |
-|---|---|
-| DB size | _(fill from above)_ |
-| signals count | _(fill from above)_ |
-| FTS5 search | _(fill from benchmark)_ |
-| GROUP BY aggregate | _(fill from benchmark)_ |
-
+${SYNC_LOGS}
 ---
 
 *Report generated at $(ts)*
@@ -263,6 +294,12 @@ echo ""
 echo "================================================================"
 echo "  PIPELINE COMPLETE — $(ts)"
 echo "  Total elapsed: ${TOTAL_ELAPSED}s (${TOTAL_HOURS}h)"
+echo "  Succeeded: ${#succeeded[@]}/$TOTAL | Failed: ${#failed[@]}/$TOTAL"
 echo "  Report: $REPORT"
 echo "  Benchmark: $DATA/benchmark_full.log"
 echo "================================================================"
+
+if [ "${#failed[@]}" -gt 0 ]; then
+    echo "[$(ts)] Exiting with failure: ${#failed[@]} repo(s) failed"
+    exit 1
+fi

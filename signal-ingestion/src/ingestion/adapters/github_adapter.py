@@ -250,6 +250,9 @@ class GitHubAdapter(SourceAdapter):
 
         * **403 rate-limit** → sleep until ``x-ratelimit-reset`` + 1s, retry
           up to 3 times.
+        * **429 secondary rate limit** → parse ``Retry-After`` header (clamped
+          to 5–300 s), sleep and retry up to 3 times. Token rotation is NOT
+          attempted (429 is IP-level, not token-specific).
         * **5xx** / network errors → exponential backoff 1s, 2s, 4s; up to
           3 retries.
         * **Other 4xx** → returned as-is (caller decides: 404/422 are
@@ -349,6 +352,30 @@ class GitHubAdapter(SourceAdapter):
                     )
                     await asyncio.sleep(wait)
                     backoff *= 2
+                    continue
+
+                if resp.status_code == 429:
+                    if attempt >= _MAX_RETRIES:
+                        logger.warning(
+                            "GitHub 429 secondary rate limit on %s after %s retries",
+                            url,
+                            _MAX_RETRIES,
+                        )
+                        return resp
+                    retry_after = resp.headers.get("Retry-After", "")
+                    try:
+                        wait = max(5.0, min(float(retry_after), 300.0))
+                    except (ValueError, TypeError):
+                        wait = min(max(backoff * 4, 60.0), 300.0)
+                    logger.warning(
+                        "GitHub 429 secondary rate limit on %s, retry in %.1fs (%s/%s)",
+                        url,
+                        wait,
+                        attempt + 1,
+                        _MAX_RETRIES,
+                    )
+                    await asyncio.sleep(wait)
+                    backoff = min(max(backoff * 2, wait), 300.0)
                     continue
 
                 if 500 <= resp.status_code < 600:

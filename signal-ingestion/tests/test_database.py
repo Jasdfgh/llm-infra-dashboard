@@ -34,11 +34,17 @@ def test_init_db_creates_tables(tmp_path: Path) -> None:
         "signal_refs",
         "sync_runs",
         "etag_cache",
+        "signal_labels",
+        "signal_gap_ids",
+        "signal_stats",
     }
     for t in expected_tables:
         assert t in table_names, f"missing table: {t}"
 
-    expected_triggers = {"signals_ai", "signals_au", "signals_ad"}
+    expected_triggers = {
+        "signals_ai", "signals_au", "signals_ad",
+        "signal_stats_ai", "signal_stats_au", "signal_stats_ad",
+    }
     for tr in expected_triggers:
         assert tr in trigger_names, f"missing trigger: {tr}"
 
@@ -68,7 +74,7 @@ def test_get_connection_pragmas(tmp_path: Path) -> None:
         assert fk == 1
 
         busy = conn.execute("PRAGMA busy_timeout").fetchone()[0]
-        assert busy == 5000
+        assert busy == 15000
     finally:
         conn.close()
 
@@ -212,4 +218,169 @@ class TestLabelsTrigger:
         conn = get_connection(db)
         _insert_signal(conn, "sig1", "[]")
         assert _get_labels(conn, "sig1") == []
+        conn.close()
+
+
+# ── 7. signal_stats trigger tests ──────────────────────────────────────
+
+_STATS_INSERT_SQL = (
+    "INSERT INTO signals "
+    "(signal_id, source_type, source_url, source_repo, title, body, "
+    "created_at, updated_at, first_seen_at, last_synced_at, "
+    "content_hash, github_state) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+)
+_STATS_COLS = ("title", "body", "2026-01-01", "2026-01-01",
+               "2026-01-01", "2026-01-01", "abc")
+
+
+def _insert_signal_with_state(conn, sig_id: str, source_type: str,
+                               source_repo: str, github_state: str | None) -> None:
+    conn.execute(
+        _STATS_INSERT_SQL,
+        (sig_id, source_type, "http://x", source_repo, *_STATS_COLS, github_state),
+    )
+    conn.commit()
+
+
+def _get_stats_cnt(conn, source_repo: str, github_state: str) -> int:
+    row = conn.execute(
+        "SELECT cnt FROM signal_stats WHERE source_repo = ? AND github_state = ?",
+        (source_repo, github_state),
+    ).fetchone()
+    return row[0] if row else 0
+
+
+class TestSignalStatsTrigger:
+    """Tests for signal_stats materialized aggregation triggers."""
+
+    def test_insert_increments_stats(self, tmp_path: Path) -> None:
+        """INSERT a signal -> cnt=1 for that (repo, type, state) bucket."""
+        db = tmp_path / "test.db"
+        init_db(db)
+        conn = get_connection(db)
+        _insert_signal_with_state(conn, "sig1", "github_issue", "org/repo", "open")
+        assert _get_stats_cnt(conn, "org/repo", "open") == 1
+        conn.close()
+
+    def test_insert_multiple_same_bucket(self, tmp_path: Path) -> None:
+        """INSERT 3 signals with same (repo, type, state) -> cnt=3."""
+        db = tmp_path / "test.db"
+        init_db(db)
+        conn = get_connection(db)
+        for i in range(3):
+            _insert_signal_with_state(conn, f"sig{i}", "github_issue", "org/repo", "open")
+        assert _get_stats_cnt(conn, "org/repo", "open") == 3
+        conn.close()
+
+    def test_insert_different_buckets(self, tmp_path: Path) -> None:
+        """INSERT signals with different states -> separate buckets."""
+        db = tmp_path / "test.db"
+        init_db(db)
+        conn = get_connection(db)
+        _insert_signal_with_state(conn, "sig1", "github_issue", "org/repo", "open")
+        _insert_signal_with_state(conn, "sig2", "github_issue", "org/repo", "closed")
+        assert _get_stats_cnt(conn, "org/repo", "open") == 1
+        assert _get_stats_cnt(conn, "org/repo", "closed") == 1
+        conn.close()
+
+    def test_delete_decrements_stats(self, tmp_path: Path) -> None:
+        """DELETE a signal -> cnt decremented."""
+        db = tmp_path / "test.db"
+        init_db(db)
+        conn = get_connection(db)
+        _insert_signal_with_state(conn, "sig1", "github_issue", "org/repo", "open")
+        _insert_signal_with_state(conn, "sig2", "github_issue", "org/repo", "open")
+        assert _get_stats_cnt(conn, "org/repo", "open") == 2
+
+        conn.execute("DELETE FROM signals WHERE signal_id = ?", ("sig1",))
+        conn.commit()
+        assert _get_stats_cnt(conn, "org/repo", "open") == 1
+        conn.close()
+
+    def test_update_state_moves_bucket(self, tmp_path: Path) -> None:
+        """UPDATE github_state -> old bucket decremented, new bucket incremented."""
+        db = tmp_path / "test.db"
+        init_db(db)
+        conn = get_connection(db)
+        _insert_signal_with_state(conn, "sig1", "github_issue", "org/repo", "open")
+        assert _get_stats_cnt(conn, "org/repo", "open") == 1
+
+        conn.execute(
+            "UPDATE signals SET github_state = ? WHERE signal_id = ?",
+            ("closed", "sig1"),
+        )
+        conn.commit()
+        assert _get_stats_cnt(conn, "org/repo", "open") == 0
+        assert _get_stats_cnt(conn, "org/repo", "closed") == 1
+        conn.close()
+
+    def test_null_state_coalesced(self, tmp_path: Path) -> None:
+        """INSERT with github_state=None -> bucket uses '' as key."""
+        db = tmp_path / "test.db"
+        init_db(db)
+        conn = get_connection(db)
+        _insert_signal_with_state(conn, "sig1", "github_issue", "org/repo", None)
+        assert _get_stats_cnt(conn, "org/repo", "") == 1
+        conn.close()
+
+    def test_backfill_populates_stats(self, tmp_path: Path) -> None:
+        """Backfill: insert raw rows without triggers, then init_db populates stats."""
+        db = tmp_path / "test.db"
+        # Create schema without signal_stats triggers by using raw DDL
+        conn = sqlite3.connect(str(db))
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("""
+            CREATE TABLE signals (
+                rowid INTEGER PRIMARY KEY,
+                signal_id TEXT NOT NULL UNIQUE,
+                source_type TEXT NOT NULL,
+                source_url TEXT NOT NULL,
+                source_repo TEXT,
+                source_number INTEGER,
+                title TEXT NOT NULL,
+                body TEXT,
+                body_token_estimate INTEGER DEFAULT 0,
+                author TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                first_seen_at TEXT NOT NULL,
+                last_synced_at TEXT NOT NULL,
+                content_hash TEXT NOT NULL,
+                version INTEGER DEFAULT 1,
+                sync_run_id TEXT,
+                references_json TEXT,
+                tags TEXT,
+                github_json TEXT,
+                github_state TEXT,
+                github_labels TEXT,
+                github_is_pr INTEGER DEFAULT 0,
+                github_comment_count INTEGER DEFAULT 0,
+                twitter_json TEXT,
+                arxiv_json TEXT,
+                classification_json TEXT,
+                gap_ids TEXT
+            )
+        """)
+        # Insert raw rows (no triggers active)
+        for i in range(5):
+            conn.execute(
+                _STATS_INSERT_SQL,
+                (f"sig{i}", "github_issue", "http://x", "org/repo", *_STATS_COLS, "open"),
+            )
+        for i in range(5, 8):
+            conn.execute(
+                _STATS_INSERT_SQL,
+                (f"sig{i}", "github_pr", "http://x", "org/repo", *_STATS_COLS, "closed"),
+            )
+        conn.commit()
+        conn.close()
+
+        # Now run init_db which will apply full DDL + backfill
+        init_db(db)
+
+        conn = get_connection(db)
+        assert _get_stats_cnt(conn, "org/repo", "open") == 5
+        assert _get_stats_cnt(conn, "org/repo", "closed") == 3
         conn.close()

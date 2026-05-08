@@ -21,12 +21,9 @@
 [[sources]]
 id = "signals"
 description = "AMD/NVIDIA competitive intelligence signals (SQLite + FTS5)"
-# DSN uses a relative path — resolves from dbhub's working directory.
-# HTTP mode: start_dbhub_server.sh does `cd "$PROJ"` before launch.
-# stdio mode (Cursor/Claude Code): ensure cwd is the project root, e.g.
-#   - use start_dbhub_server.sh as the command, or
-#   - set "cwd" in mcp.json (Cursor), or wrap with `cd /path/to/project &&`.
-dsn = "sqlite:///data/signals.db"
+# DSN uses an absolute path to avoid cwd-dependent resolution failures.
+# Path: /home/yaywang/my-llm-infra-dashboard/data/signals.db
+dsn = "sqlite:///home/yaywang/my-llm-infra-dashboard/data/signals.db"
 
 # ============================================================================
 # Built-in Tools

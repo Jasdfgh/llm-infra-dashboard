@@ -339,13 +339,16 @@ class Normalizer:
         pr_merged_at: str | None = None
         pr_changed_files: PRChangedFiles | None = None
         if is_pr:
-            # GitHubAdapter.fetch_detail copies `/pulls/{n}` extras onto the
-            # top-level raw_data dict. If they're missing (e.g. a signal
-            # discovered via /issues list without a later detail fetch) we
-            # default to "not merged" / zeros; a subsequent fetch_detail
-            # resync will refine these and generate the PR_MERGED event.
             pr_merged = bool(rd.get("merged", False))
             pr_merged_at = rd.get("merged_at")
+
+            # /issues endpoint doesn't return top-level "merged"; it stores
+            # merged_at inside the pull_request sub-object instead.
+            if not pr_merged:
+                pr_sub = rd.get("pull_request", {})
+                if isinstance(pr_sub, dict) and pr_sub.get("merged_at"):
+                    pr_merged = True
+                    pr_merged_at = pr_merged_at or pr_sub["merged_at"]
             changed_total_raw = rd.get("changed_files")
             total = changed_total_raw if isinstance(changed_total_raw, int) else 0
             pr_changed_files = PRChangedFiles(

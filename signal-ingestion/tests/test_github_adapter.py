@@ -275,6 +275,104 @@ class TestFetchDetail:
         assert sig is not None and sig.raw_id == "42"
         assert mock_sleep.await_count >= 1
 
+    @patch("asyncio.sleep", new_callable=AsyncMock)
+    async def test_429_secondary_rate_limit_retries(
+        self, mock_sleep, adapter, mock_request
+    ):
+        """429 secondary rate limit with Retry-After → sleep and retry."""
+        resp_429 = _resp(
+            429,
+            json_data={"message": "You have exceeded a secondary rate limit"},
+            headers={"Retry-After": "10"},
+        )
+        mock_request.side_effect = [resp_429, _resp(json_data=_issue(42))]
+        sig = await adapter.fetch_detail("42", repo="owner/repo")
+        assert sig is not None and sig.raw_id == "42"
+        assert mock_sleep.await_count >= 1
+        # Verify sleep was called with at least 5s (our minimum clamp)
+        sleep_arg = mock_sleep.call_args_list[0][0][0]
+        assert sleep_arg >= 5.0
+
+    @patch("asyncio.sleep", new_callable=AsyncMock)
+    async def test_429_exhausts_retries(
+        self, mock_sleep, adapter, mock_request
+    ):
+        """429 on all attempts → _request returns 429 resp, fetch_detail raises HTTPStatusError."""
+        resp_429 = _resp(
+            429,
+            json_data={"message": "You have exceeded a secondary rate limit"},
+            headers={"Retry-After": "5"},
+        )
+        mock_request.return_value = resp_429
+        with pytest.raises(httpx.HTTPStatusError) as exc_info:
+            await adapter.fetch_detail("42", repo="owner/repo")
+        assert exc_info.value.response.status_code == 429
+
+    @patch("asyncio.sleep", new_callable=AsyncMock)
+    async def test_429_missing_retry_after_capped(
+        self, mock_sleep, adapter, mock_request
+    ):
+        """429 with no Retry-After header → fallback sleep capped at 300s."""
+        resp_429 = _resp(
+            429,
+            json_data={"message": "secondary rate limit"},
+            headers={},
+        )
+        mock_request.side_effect = [resp_429, resp_429, resp_429, resp_429]
+        with pytest.raises(httpx.HTTPStatusError):
+            await adapter.fetch_detail("42", repo="owner/repo")
+        for call in mock_sleep.call_args_list:
+            assert call[0][0] <= 300.0, f"sleep {call[0][0]} exceeds 300s cap"
+            assert call[0][0] >= 5.0, f"sleep {call[0][0]} below 5s minimum"
+
+    @patch("asyncio.sleep", new_callable=AsyncMock)
+    async def test_429_non_numeric_retry_after_capped(
+        self, mock_sleep, adapter, mock_request
+    ):
+        """429 with non-numeric Retry-After → fallback sleep capped at 300s."""
+        resp_429 = _resp(
+            429,
+            json_data={"message": "secondary rate limit"},
+            headers={"Retry-After": "n/a"},
+        )
+        mock_request.side_effect = [resp_429, _resp(json_data=_issue(42))]
+        sig = await adapter.fetch_detail("42", repo="owner/repo")
+        assert sig is not None
+        sleep_val = mock_sleep.call_args_list[0][0][0]
+        assert 5.0 <= sleep_val <= 300.0, f"sleep {sleep_val} outside [5, 300]"
+
+    @patch("asyncio.sleep", new_callable=AsyncMock)
+    async def test_429_negative_retry_after(
+        self, mock_sleep, adapter, mock_request
+    ):
+        """429 with negative Retry-After → clamped to minimum 5s."""
+        resp_429 = _resp(
+            429,
+            json_data={"message": "secondary rate limit"},
+            headers={"Retry-After": "-10"},
+        )
+        mock_request.side_effect = [resp_429, _resp(json_data=_issue(42))]
+        sig = await adapter.fetch_detail("42", repo="owner/repo")
+        assert sig is not None
+        sleep_val = mock_sleep.call_args_list[0][0][0]
+        assert sleep_val >= 5.0, f"sleep {sleep_val} below 5s minimum"
+
+    @patch("asyncio.sleep", new_callable=AsyncMock)
+    async def test_429_huge_retry_after_capped(
+        self, mock_sleep, adapter, mock_request
+    ):
+        """429 with huge Retry-After (99999) → capped at 300s."""
+        resp_429 = _resp(
+            429,
+            json_data={"message": "secondary rate limit"},
+            headers={"Retry-After": "99999"},
+        )
+        mock_request.side_effect = [resp_429, _resp(json_data=_issue(42))]
+        sig = await adapter.fetch_detail("42", repo="owner/repo")
+        assert sig is not None
+        sleep_val = mock_sleep.call_args_list[0][0][0]
+        assert sleep_val == 300.0, f"expected 300s cap, got {sleep_val}"
+
 
 # ===================================================================
 # 14–17  fetch_comments (HTTP mock)

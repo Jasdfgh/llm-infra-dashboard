@@ -72,6 +72,7 @@ def _get_repo() -> SignalRepository:
     global _repo_instance
     if _repo_instance is None:
         _repo_instance = SignalRepository(db_path=str(DB_PATH))
+        _repo_instance.connection.isolation_level = None
         _repo_instance.connection.execute("PRAGMA wal_autocheckpoint = 200")
     return _repo_instance
 
@@ -394,22 +395,32 @@ def get_stats() -> dict:
     try:
         conn = _get_repo().connection
 
-        total = conn.execute("SELECT COUNT(*) AS n FROM signals").fetchone()["n"]
-
-        by_repo_rows = conn.execute(
-            "SELECT source_repo, COUNT(*) AS n FROM signals GROUP BY source_repo ORDER BY n DESC"
+        rows = conn.execute(
+            "SELECT source_repo, source_type, github_state, cnt "
+            "FROM signal_stats WHERE cnt > 0"
         ).fetchall()
-        by_repo = {r["source_repo"]: r["n"] for r in by_repo_rows}
 
-        by_state_rows = conn.execute(
-            "SELECT github_state, COUNT(*) AS n FROM signals GROUP BY github_state ORDER BY n DESC"
-        ).fetchall()
-        by_state = {(r["github_state"] or "unknown"): r["n"] for r in by_state_rows}
+        total = 0
+        by_repo: dict[str, int] = {}
+        by_state: dict[str, int] = {}
+        by_type: dict[str, int] = {}
 
-        by_type_rows = conn.execute(
-            "SELECT source_type, COUNT(*) AS n FROM signals GROUP BY source_type ORDER BY n DESC"
-        ).fetchall()
-        by_type = {r["source_type"]: r["n"] for r in by_type_rows}
+        for r in rows:
+            c = r["cnt"]
+            total += c
+
+            repo = r["source_repo"]
+            by_repo[repo] = by_repo.get(repo, 0) + c
+
+            state = r["github_state"] or "unknown"
+            by_state[state] = by_state.get(state, 0) + c
+
+            stype = r["source_type"]
+            by_type[stype] = by_type.get(stype, 0) + c
+
+        by_repo = dict(sorted(by_repo.items(), key=lambda x: x[1], reverse=True))
+        by_state = dict(sorted(by_state.items(), key=lambda x: x[1], reverse=True))
+        by_type = dict(sorted(by_type.items(), key=lambda x: x[1], reverse=True))
 
         last_sync_row = conn.execute(
             "SELECT id, source_repo, status, started_at, completed_at "
@@ -663,6 +674,7 @@ def trigger_sync_all() -> dict:
             "    print('Lock held by another process', file=sys.stderr)\n"
             "    sys.exit(1)\n"
             f"repos = {repos_json}\n"
+            "_failures = []\n"
             "for repo in repos:\n"
             "    ret = subprocess.run([\n"
             f'        "{VENV_PYTHON}", "{SYNC_SCRIPT}",\n'
@@ -671,12 +683,17 @@ def trigger_sync_all() -> dict:
             f'    ], cwd="{_PROJ}")\n'
             "    if ret.returncode != 0:\n"
             '        print(f"FAILED: {repo}", file=sys.stderr)\n'
-            "        sys.exit(ret.returncode)\n"
+            "        _failures.append(repo)\n"
+            "    else:\n"
+            '        print(f"OK: {repo}")\n'
             f'c = sqlite3.connect("{DB_PATH}")\n'
             'c.execute("PRAGMA busy_timeout=30000")\n'
             'c.execute("PRAGMA wal_checkpoint(PASSIVE)")\n'
             'c.execute("ANALYZE")\n'
             "c.close()\n"
+            "if _failures:\n"
+            '    print(f"Failed repos: {\', \'.join(_failures)}", file=sys.stderr)\n'
+            "    sys.exit(1)\n"
         )
 
         log_path = _PROJ / "data" / "sync_mcp_all.log"

@@ -280,6 +280,45 @@ def test_normalize_pr_captures_merge_state_and_changed_files(
     assert sig.github.pr_changed_files.deletions == 58
 
 
+def test_normalize_pr_merged_from_issues_endpoint(pr_demo: dict[str, Any]) -> None:
+    """/issues endpoint: no top-level 'merged', but pull_request.merged_at is set."""
+    raw_data = _pr_raw_from_demo(pr_demo)
+    # Simulate /issues response: remove top-level merged/merged_at,
+    # put merged_at inside pull_request sub-object (as GitHub /issues API does)
+    del raw_data["merged"]
+    merged_at = raw_data.pop("merged_at")
+    raw_data["pull_request"]["merged_at"] = merged_at
+
+    raw = RawSignal(
+        raw_id=str(pr_demo["number"]),
+        source_type=SourceType.GITHUB_PR,
+        raw_data=raw_data,
+    )
+    sig = Normalizer().normalize_signal(raw)
+    assert sig.github is not None
+    assert sig.github.pr_merged is True
+    assert sig.github.pr_merged_at == merged_at
+
+
+def test_normalize_pr_not_merged_no_false_positive(pr_demo: dict[str, Any]) -> None:
+    """/issues endpoint: PR is NOT merged — pull_request.merged_at is null."""
+    raw_data = _pr_raw_from_demo(pr_demo)
+    del raw_data["merged"]
+    raw_data.pop("merged_at", None)
+    raw_data["pull_request"]["merged_at"] = None
+    raw_data["state"] = "open"
+
+    raw = RawSignal(
+        raw_id=str(pr_demo["number"]),
+        source_type=SourceType.GITHUB_PR,
+        raw_data=raw_data,
+    )
+    sig = Normalizer().normalize_signal(raw)
+    assert sig.github is not None
+    assert sig.github.pr_merged is False
+    assert sig.github.pr_merged_at is None
+
+
 def test_normalize_pr_extracts_references_from_body(
     pr_demo: dict[str, Any],
 ) -> None:

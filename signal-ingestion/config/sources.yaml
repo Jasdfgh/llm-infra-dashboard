@@ -33,15 +33,129 @@ github:
         full: "0 2 * * *"            # daily 2am
         discovery: "0 */4 * * *"     # every 4h
 
-    # --- future repos (commented out for MVP) ---
-    # - repo: "sgl-project/sglang"
+    - repo: "sgl-project/sglang"
+      priority: P0
+      access: public
+      track_labels: ["rocm", "amd"]
+      track_keywords: ["ROCm", "AMD", "MI300", "MI350", "HIP"]
+      keyword_scope: "title"
+      exclude_keywords: []
+      include_comments: true
+      max_comments_per_issue: 100
+      deep_scan_threshold: 5
+      schedule:
+        incremental: "0 */2 * * *"
+        full: "0 2 * * *"
+        discovery: "0 */4 * * *"
+
+    # --- repos below are configured but NOT yet active for incremental sync ---
+    # Uncomment after running initial full sync for each repo.
+    # See: scripts/full_sync_and_report.sh
+    #
+    # - repo: "pytorch/pytorch"
     #   priority: P0
     #   access: public
-    #   track_labels: ["rocm", "amd"]
-    # - repo: "ROCm/aiter"
+    #   track_labels: ["module: rocm"]
+    #   track_keywords: ["ROCm", "AMD", "HIP", "MI300", "gfx"]
+    #   keyword_scope: "title"
+    #   exclude_keywords: []
+    #   include_comments: true
+    #   max_comments_per_issue: 50
+    #   deep_scan_threshold: 10
+    #   schedule:
+    #     incremental: "0 */2 * * *"
+    #     full: "0 3 * * 0"
+    #     discovery: "0 */6 * * *"
+    #
+    # - repo: "triton-lang/triton"
+    #   priority: P0
+    #   access: public
+    #   track_labels: ["AMD", "hip"]
+    #   track_keywords: ["ROCm", "AMD", "HIP", "MI300", "gfx", "CDNA"]
+    #   keyword_scope: "title"
+    #   exclude_keywords: []
+    #   include_comments: true
+    #   max_comments_per_issue: 100
+    #   deep_scan_threshold: 5
+    #   schedule:
+    #     incremental: "0 */2 * * *"
+    #     full: "0 3 * * *"
+    #     discovery: "0 */4 * * *"
+    #
+    # - repo: "ollama/ollama"
     #   priority: P1
-    #   access: private          # Search API returns 422; requires repo scope
-    #   fallback: manual
+    #   access: public
+    #   track_labels: ["rocm"]
+    #   track_keywords: ["ROCm", "AMD", "Radeon", "HIP", "MI300"]
+    #   keyword_scope: "title"
+    #   exclude_keywords: []
+    #   include_comments: true
+    #   max_comments_per_issue: 100
+    #   deep_scan_threshold: 5
+    #   schedule:
+    #     incremental: "0 */2 * * *"
+    #     full: "0 4 * * *"
+    #     discovery: "0 */4 * * *"
+    #
+    # - repo: "ROCm/ROCm"
+    #   priority: P1
+    #   access: public
+    #   track_labels: []
+    #   track_keywords: ["MI300", "MI350", "gfx950", "vLLM", "inference"]
+    #   keyword_scope: "title"
+    #   exclude_keywords: []
+    #   include_comments: true
+    #   max_comments_per_issue: 100
+    #   deep_scan_threshold: 5
+    #   schedule:
+    #     incremental: "0 */2 * * *"
+    #     full: "0 4 * * *"
+    #     discovery: "0 */4 * * *"
+    #
+    # - repo: "ggerganov/llama.cpp"
+    #   priority: P1
+    #   access: public
+    #   track_labels: ["Vulkan", "hip"]
+    #   track_keywords: ["ROCm", "AMD", "HIP", "Radeon", "RDNA", "CDNA"]
+    #   keyword_scope: "title"
+    #   exclude_keywords: []
+    #   include_comments: true
+    #   max_comments_per_issue: 50
+    #   deep_scan_threshold: 10
+    #   schedule:
+    #     incremental: "0 */2 * * *"
+    #     full: "0 3 * * 0"
+    #     discovery: "0 */6 * * *"
+    #
+    # - repo: "comfyanonymous/ComfyUI"
+    #   priority: P2
+    #   access: public
+    #   track_labels: []
+    #   track_keywords: ["ROCm", "AMD", "Radeon", "HIP"]
+    #   keyword_scope: "title"
+    #   exclude_keywords: []
+    #   include_comments: true
+    #   max_comments_per_issue: 50
+    #   deep_scan_threshold: 5
+    #   schedule:
+    #     incremental: "0 */4 * * *"
+    #     full: "0 5 * * 0"
+    #     discovery: "0 */8 * * *"
+    #
+    # - repo: "oobabooga/text-generation-webui"
+    #   priority: P2
+    #   access: public
+    #   track_labels: []
+    #   track_keywords: ["ROCm", "AMD", "Radeon", "HIP"]
+    #   keyword_scope: "title"
+    #   exclude_keywords: []
+    #   include_comments: true
+    #   max_comments_per_issue: 50
+    #   deep_scan_threshold: 5
+    #   schedule:
+    #     incremental: "0 */4 * * *"
+    #     full: "0 5 * * 0"
+    #     discovery: "0 */8 * * *"
 
 # Normalizer config
 normalizer:

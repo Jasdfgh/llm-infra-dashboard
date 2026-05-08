@@ -290,6 +290,61 @@ _DDL_STATEMENTS: tuple[str, ...] = (
         DELETE FROM signal_gap_ids WHERE signal_id = old.signal_id;
     END
     """,
+    # ── signal_stats: materialized aggregation table ─────────────────────
+    """
+    CREATE TABLE IF NOT EXISTS signal_stats (
+        source_repo   TEXT NOT NULL,
+        source_type   TEXT NOT NULL,
+        github_state  TEXT NOT NULL DEFAULT '',
+        cnt           INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (source_repo, source_type, github_state)
+    )
+    """,
+    "DROP TRIGGER IF EXISTS signal_stats_ai",
+    """
+    CREATE TRIGGER signal_stats_ai AFTER INSERT ON signals BEGIN
+        INSERT INTO signal_stats(source_repo, source_type, github_state, cnt)
+        VALUES (
+            COALESCE(new.source_repo, ''),
+            new.source_type,
+            COALESCE(new.github_state, ''),
+            1
+        )
+        ON CONFLICT(source_repo, source_type, github_state)
+        DO UPDATE SET cnt = cnt + 1;
+    END
+    """,
+    "DROP TRIGGER IF EXISTS signal_stats_ad",
+    """
+    CREATE TRIGGER signal_stats_ad AFTER DELETE ON signals BEGIN
+        UPDATE signal_stats SET cnt = cnt - 1
+        WHERE source_repo = COALESCE(old.source_repo, '')
+          AND source_type = old.source_type
+          AND github_state = COALESCE(old.github_state, '');
+    END
+    """,
+    "DROP TRIGGER IF EXISTS signal_stats_au",
+    """
+    CREATE TRIGGER signal_stats_au AFTER UPDATE OF source_repo, source_type, github_state ON signals
+    WHEN COALESCE(old.source_repo, '') IS NOT COALESCE(new.source_repo, '')
+      OR old.source_type IS NOT new.source_type
+      OR COALESCE(old.github_state, '') IS NOT COALESCE(new.github_state, '')
+    BEGIN
+        UPDATE signal_stats SET cnt = cnt - 1
+        WHERE source_repo = COALESCE(old.source_repo, '')
+          AND source_type = old.source_type
+          AND github_state = COALESCE(old.github_state, '');
+        INSERT INTO signal_stats(source_repo, source_type, github_state, cnt)
+        VALUES (
+            COALESCE(new.source_repo, ''),
+            new.source_type,
+            COALESCE(new.github_state, ''),
+            1
+        )
+        ON CONFLICT(source_repo, source_type, github_state)
+        DO UPDATE SET cnt = cnt + 1;
+    END
+    """,
 )
 
 
@@ -310,7 +365,7 @@ def get_connection(db_path: str | Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
 
     * ``journal_mode = WAL``      — concurrent readers + single writer.
     * ``foreign_keys = ON``       — enforce FK constraints (off by default).
-    * ``busy_timeout = 5000`` ms  — wait up to 5 s for a lock before SQLITE_BUSY.
+    * ``busy_timeout = 15000`` ms — wait up to 15 s for a lock before SQLITE_BUSY.
 
     The caller owns the returned connection and is responsible for closing
     it (or using a ``with`` block). The parent directory is NOT auto-created
@@ -324,7 +379,7 @@ def get_connection(db_path: str | Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
     # and so must be re-applied on each open.
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA busy_timeout = 5000")
+    conn.execute("PRAGMA busy_timeout = 15000")
     return conn
 
 
@@ -367,6 +422,13 @@ def init_db(db_path: str | Path = DEFAULT_DB_PATH) -> None:
                 WHERE s.gap_ids IS NOT NULL
                   AND json_valid(s.gap_ids)
                   AND json_type(s.gap_ids) = 'array'
+            """)
+            conn.execute("""
+                INSERT OR REPLACE INTO signal_stats(source_repo, source_type, github_state, cnt)
+                SELECT COALESCE(source_repo, ''), source_type,
+                       COALESCE(github_state, ''), COUNT(*)
+                FROM signals
+                GROUP BY COALESCE(source_repo, ''), source_type, COALESCE(github_state, '')
             """)
     finally:
         conn.close()
