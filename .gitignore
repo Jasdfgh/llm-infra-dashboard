@@ -47,3 +47,7 @@ Thumbs.db
 .idea/
 *.swp
 *~
+
+# ─── Signal ingestion runtime data and secrets ────────
+signal-ingestion/data/
+signal-ingestion/config/teams_webhook_url.txt

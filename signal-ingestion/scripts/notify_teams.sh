@@ -1,9 +1,11 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Teams alert via Power Automate Workflows webhook.
 # Webhook URL is read from config/teams_webhook_url.txt (one line, the full URL).
 # If the file doesn't exist, alert is silently skipped (best-effort).
 
-set -uo pipefail
+set -euo pipefail
+# Note: individual steps use explicit error handling (|| exit 0, || echo fallback)
+# so -e is safe here — best-effort logic is handled per-command, not globally.
 
 PROJ="$(cd "$(dirname "$0")/.." && pwd)"
 WEBHOOK_URL_FILE="$PROJ/config/teams_webhook_url.txt"

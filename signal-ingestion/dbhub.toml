@@ -21,9 +21,10 @@
 [[sources]]
 id = "signals"
 description = "AMD/NVIDIA competitive intelligence signals (SQLite + FTS5)"
-# DSN uses an absolute path to avoid cwd-dependent resolution failures.
-# Path: /home/yaywang/my-llm-infra-dashboard/data/signals.db
-dsn = "sqlite:///home/yaywang/my-llm-infra-dashboard/data/signals.db"
+# DSN — relative path, resolves from working directory.
+# All launchers (start_dbhub_server.sh, systemd unit) must cd to project root first.
+# If dbhub fails with "directory does not exist", check that cwd is correct.
+dsn = "sqlite:data/signals.db"
 
 # ============================================================================
 # Built-in Tools
