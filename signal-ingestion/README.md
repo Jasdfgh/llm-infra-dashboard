@@ -237,7 +237,7 @@ Week 2 REST API 待做（FastAPI，接口已对齐 D3.3）。目前可以：
 ├── examples/
 │   ├── module2_quickstart.py # Vivi 接入示例（7 步）
 │   ├── module4_agent_queries.py  # Zijun 查询示例（6 场景）
-│   └── ops_cheatsheet.sh     # 运维命令速查
+│   └── ops_cheatsheet.md     # 运维命令速查
 ├── config/sources.yaml       # 数据源配置
 ├── dbhub.toml                # MCP 工具配置（6 个工具）
 ├── data/

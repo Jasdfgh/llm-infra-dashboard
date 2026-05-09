@@ -25,7 +25,7 @@ Daily workflow (run once per day):
   4. Classification results are automatically written back to DB
 
 Scheduling tips:
-  Add sync_github.py to crontab (see examples/ops_cheatsheet.sh)
+  Add sync_github.py to crontab (see examples/ops_cheatsheet.md)
   Then make this script the entry point of your classification pipeline
 """
 import json
