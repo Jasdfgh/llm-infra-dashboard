@@ -47,9 +47,42 @@ if [ -f "$DB" ] && command -v sqlite3 &>/dev/null; then
     fi
 fi
 
-# Get recent log lines from the failed unit (best-effort)
-RECENT_LOG=$(journalctl --user -u "$UNIT_NAME" -n 10 --no-pager 2>/dev/null | tail -5 || echo "no logs available")
-RECENT_LOG_JSON=$(printf '%s' "$RECENT_LOG" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()[:2000]))' 2>/dev/null || echo '"(log encoding failed)"')
+# Query sync_runs for meaningful summary instead of raw journalctl
+SUMMARY=""
+if [ -f "$DB" ] && command -v sqlite3 &>/dev/null; then
+    # Last successful sync
+    LAST_OK=$(sqlite3 "$DB" "
+        SELECT source_repo || ' (' || completed_at || ')'
+        FROM sync_runs
+        WHERE status = 'completed'
+        ORDER BY completed_at DESC
+        LIMIT 1
+    " 2>/dev/null || echo "unknown")
+
+    # Consecutive failure count
+    FAIL_COUNT=$(sqlite3 "$DB" "
+        SELECT COUNT(*) FROM (
+            SELECT status FROM sync_runs
+            WHERE status != 'running'
+            ORDER BY started_at DESC
+            LIMIT 10
+        ) WHERE status != 'completed'
+    " 2>/dev/null || echo "?")
+
+    # Recent failed repos and their errors
+    FAILED_REPOS=$(sqlite3 -separator ' | ' "$DB" "
+        SELECT source_repo, COALESCE(SUBSTR(error_message, 1, 80), status)
+        FROM sync_runs
+        WHERE status NOT IN ('completed', 'running')
+        ORDER BY started_at DESC
+        LIMIT 3
+    " 2>/dev/null || echo "unknown")
+
+    SUMMARY="Consecutive failures: ${FAIL_COUNT}\nLast success: ${LAST_OK}\nRecent failures:\n${FAILED_REPOS}"
+else
+    SUMMARY="(DB not available for summary)"
+fi
+SUMMARY_JSON=$(printf '%s' "$SUMMARY" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()[:2000]))' 2>/dev/null || echo '"(summary encoding failed)"')
 
 # Build Adaptive Card JSON
 PAYLOAD=$(cat <<EOFCARD
@@ -64,7 +97,7 @@ PAYLOAD=$(cat <<EOFCARD
       "body": [
         {
           "type": "TextBlock",
-          "text": "⚠️ Service Failure Alert",
+          "text": "⚠️ Sync Failure Alert",
           "weight": "Bolder",
           "size": "Large",
           "color": "Attention"
@@ -72,20 +105,32 @@ PAYLOAD=$(cat <<EOFCARD
         {
           "type": "FactSet",
           "facts": [
-            {"title": "Unit", "value": "${UNIT_NAME}"},
+            {"title": "Service", "value": "${UNIT_NAME}"},
             {"title": "Host", "value": "${HOSTNAME}"},
-            {"title": "Time", "value": "${TIMESTAMP}"}
+            {"title": "Time", "value": "${TIMESTAMP}"},
+            {"title": "Consecutive failures", "value": "${FAIL_COUNT}"}
           ]
         },
         {
           "type": "TextBlock",
-          "text": "Recent logs:",
+          "text": "Last successful sync:",
           "weight": "Bolder",
           "spacing": "Medium"
         },
         {
           "type": "TextBlock",
-          "text": $RECENT_LOG_JSON,
+          "text": "${LAST_OK}",
+          "wrap": true
+        },
+        {
+          "type": "TextBlock",
+          "text": "Recent failed syncs:",
+          "weight": "Bolder",
+          "spacing": "Medium"
+        },
+        {
+          "type": "TextBlock",
+          "text": $SUMMARY_JSON,
           "wrap": true,
           "fontType": "Monospace",
           "size": "Small"
