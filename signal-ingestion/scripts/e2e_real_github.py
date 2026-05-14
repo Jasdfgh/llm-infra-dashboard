@@ -16,8 +16,9 @@ import sqlite3
 import sys
 from pathlib import Path
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(_REPO_ROOT))
+_PROJ = Path(__file__).resolve().parent.parent
+_ROOT = _PROJ.parent if (_PROJ / "src").exists() and (_PROJ.parent / "data").exists() else _PROJ
+sys.path.insert(0, str(_PROJ))
 
 from src.ingestion.adapters.github_adapter import GitHubAdapter  # noqa: E402
 from src.ingestion.change_detector import ChangeDetector  # noqa: E402
@@ -105,8 +106,8 @@ class SearchBackedAdapter:
 
 
 async def main() -> int:
-    db_path = _REPO_ROOT / "data/signals.db"
-    cache_dir = _REPO_ROOT / "data/cache"
+    db_path = _ROOT / "data/signals.db"
+    cache_dir = _ROOT / "data/cache"
 
     for p in (db_path, Path(f"{db_path}-wal"), Path(f"{db_path}-shm")):
         if p.exists():

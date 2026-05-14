@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJ="$(cd "$(dirname "$0")/.." && pwd)"
-DB="$PROJ/data/signals.db"
-BACKUP_DIR="$PROJ/data/backups"
+WORKSHOP="$(cd "$(dirname "$0")/.." && pwd)"
+if [ -d "$WORKSHOP/src" ] && [ -d "$(dirname "$WORKSHOP")/data" ]; then
+    ROOT="$(dirname "$WORKSHOP")"
+else
+    ROOT="$WORKSHOP"
+fi
+DB="$ROOT/data/signals.db"
+BACKUP_DIR="$ROOT/data/backups"
 RETENTION_DAYS=7
 DATE=$(date +%Y%m%d_%H%M%S)
 BACKUP_FILE="$BACKUP_DIR/signals_${DATE}.db"

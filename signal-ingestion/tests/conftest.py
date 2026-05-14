@@ -1,5 +1,12 @@
 """Shared pytest configuration and custom markers."""
 
+import sys
+from pathlib import Path
+
+_WORKSHOP = Path(__file__).resolve().parent.parent
+if str(_WORKSHOP) not in sys.path:
+    sys.path.insert(0, str(_WORKSHOP))
+
 
 def pytest_configure(config):
     config.addinivalue_line(

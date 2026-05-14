@@ -12,19 +12,20 @@
 
 set -euo pipefail
 
-PROJ="$(cd "$(dirname "$0")/.." && pwd)"
-if [ ! -d "$PROJ/src" ] || [ ! -f "$PROJ/requirements.txt" ]; then
-    echo "ERROR: Invalid project root: $PROJ" >&2
-    exit 1
+WORKSHOP="$(cd "$(dirname "$0")/.." && pwd)"
+if [ -d "$WORKSHOP/src" ] && [ -d "$(dirname "$WORKSHOP")/data" ]; then
+    ROOT="$(dirname "$WORKSHOP")"
+else
+    ROOT="$WORKSHOP"
 fi
 NODE="${NODE:-$(which node 2>/dev/null || echo "node")}"
 DBHUB_ENTRY="${DBHUB_ENTRY:-$(npm root -g 2>/dev/null)/@bytebase/dbhub/dist/index.js}"
-CONFIG="$PROJ/dbhub.toml"
+CONFIG="$WORKSHOP/dbhub.toml"
 PORT="${PORT:-8081}"
-LOGFILE="$PROJ/data/dbhub_server.log"
-PIDFILE="$PROJ/data/dbhub_server.pid"
+LOGFILE="$ROOT/data/dbhub_server.log"
+PIDFILE="$ROOT/data/dbhub_server.pid"
 
-mkdir -p "$PROJ/data"
+mkdir -p "$ROOT/data"
 
 _pid() {
     if [ -f "$PIDFILE" ]; then
@@ -102,7 +103,7 @@ do_start() {
     fi
 
     echo "Starting dbhub HTTP on port $PORT..."
-    cd "$PROJ"
+    cd "$ROOT"
     nohup "$NODE" "$DBHUB_ENTRY" \
         --transport http --port "$PORT" \
         --config "$CONFIG" \

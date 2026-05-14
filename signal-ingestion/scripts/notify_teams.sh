@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
 # Teams alert via Power Automate Workflows webhook.
-# Webhook URL is read from config/teams_webhook_url.txt (one line, the full URL).
+# Webhook URL is read from secrets/teams_webhook_url.txt (one line, the full URL).
 # If the file doesn't exist, alert is silently skipped (best-effort).
 
 set -euo pipefail
 # Note: individual steps use explicit error handling (|| exit 0, || echo fallback)
 # so -e is safe here — best-effort logic is handled per-command, not globally.
 
-PROJ="$(cd "$(dirname "$0")/.." && pwd)"
-WEBHOOK_URL_FILE="$PROJ/config/teams_webhook_url.txt"
+WORKSHOP="$(cd "$(dirname "$0")/.." && pwd)"
+if [ -d "$WORKSHOP/src" ] && [ -d "$(dirname "$WORKSHOP")/data" ]; then
+    ROOT="$(dirname "$WORKSHOP")"
+else
+    ROOT="$WORKSHOP"
+fi
+WEBHOOK_URL_FILE="$ROOT/secrets/teams_webhook_url.txt"
 UNIT_NAME="${1:-unknown-unit}"
 HOSTNAME=$(hostname)
 TIMESTAMP=$(date -Iseconds)
@@ -27,7 +32,7 @@ if [ -z "$WEBHOOK_URL" ]; then
 fi
 
 # ── Consecutive failure threshold: only alert after 2+ consecutive failures ──
-DB="$PROJ/data/signals.db"
+DB="$ROOT/data/signals.db"
 CONSECUTIVE_THRESHOLD=2
 
 if [ -f "$DB" ] && command -v sqlite3 &>/dev/null; then

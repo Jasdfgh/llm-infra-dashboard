@@ -6,13 +6,14 @@ set -euo pipefail
 # Usage:  bash scripts/signals_status.sh
 # =============================================================================
 
-PROJ="$(cd "$(dirname "$0")/.." && pwd)"
-if [ ! -d "$PROJ/src" ] || [ ! -f "$PROJ/requirements.txt" ]; then
-    echo "ERROR: Invalid project root: $PROJ" >&2
-    exit 1
+WORKSHOP="$(cd "$(dirname "$0")/.." && pwd)"
+if [ -d "$WORKSHOP/src" ] && [ -d "$(dirname "$WORKSHOP")/data" ]; then
+    ROOT="$(dirname "$WORKSHOP")"
+else
+    ROOT="$WORKSHOP"
 fi
-VENV="$PROJ/.venv/bin/python"
-DB="$PROJ/data/signals.db"
+VENV="$ROOT/.venv/bin/python"
+DB="$ROOT/data/signals.db"
 
 echo "═══════════════════════════════════════════════════════════════"
 echo "  Signals Infrastructure Status — $(date '+%Y-%m-%d %H:%M:%S')"
@@ -134,12 +135,12 @@ fi
 echo ""
 echo "TOKEN POOL"
 echo "───────────────────────────────────────────────────────────────"
-pat_count=$(grep -c "^GITHUB_TOKENS" "$PROJ/.env" 2>/dev/null || true)
-app_count=$(grep -c "^GITHUB_APP_.*_ID=" "$PROJ/.env" 2>/dev/null || true)
+pat_count=$(grep -c "^GITHUB_TOKENS" "$ROOT/secrets/.env" 2>/dev/null || true)
+app_count=$(grep -c "^GITHUB_APP_.*_ID=" "$ROOT/secrets/.env" 2>/dev/null || true)
 pat_count=${pat_count:-0}
 app_count=${app_count:-0}
-if [ -f "$PROJ/.env" ]; then
-    pats=$(grep "^GITHUB_TOKENS" "$PROJ/.env" 2>/dev/null | tr ',' '\n' | wc -l) || true
+if [ -f "$ROOT/secrets/.env" ]; then
+    pats=$(grep "^GITHUB_TOKENS" "$ROOT/secrets/.env" 2>/dev/null | tr ',' '\n' | wc -l) || true
     echo "  PATs:          $pats"
     echo "  GitHub Apps:   $app_count"
     echo "  Total tokens:  $((pats + app_count))"
@@ -152,9 +153,9 @@ echo ""
 echo "LOGS (last lines)"
 echo "───────────────────────────────────────────────────────────────"
 for log in data/dbhub_server.log data/sync_incremental.log; do
-    if [ -f "$PROJ/$log" ]; then
+    if [ -f "$ROOT/$log" ]; then
         echo "  [$log]"
-        tail -2 "$PROJ/$log" 2>/dev/null | sed 's/^/    /'
+        tail -2 "$ROOT/$log" 2>/dev/null | sed 's/^/    /'
     fi
 done
 

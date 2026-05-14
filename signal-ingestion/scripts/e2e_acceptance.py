@@ -18,8 +18,9 @@ import sqlite3
 import sys
 from pathlib import Path
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(_REPO_ROOT))
+_PROJ = Path(__file__).resolve().parent.parent
+_ROOT = _PROJ.parent if (_PROJ / "src").exists() and (_PROJ.parent / "data").exists() else _PROJ
+sys.path.insert(0, str(_PROJ))
 
 from src.ingestion.change_detector import ChangeDetector  # noqa: E402
 from src.ingestion.models import (  # noqa: E402
@@ -141,7 +142,7 @@ class MockAdapter:
         self._load_demos()
 
     def _load_demos(self) -> None:
-        base = _REPO_ROOT / "tests/fixtures/signals"
+        base = _PROJ / "tests/fixtures/signals"
         self.issue_data = json.loads((base / "issue_39303.json").read_text())
         self.pr_data = json.loads((base / "pr_39616.json").read_text())
         discovery = json.loads((base / "discovery_vllm_rocm.json").read_text())
@@ -258,8 +259,8 @@ def _print_section(title: str) -> None:
 
 
 async def main() -> int:
-    db_path = _REPO_ROOT / "data/signals.db"
-    cache_dir = _REPO_ROOT / "data/cache"
+    db_path = _ROOT / "data/signals.db"
+    cache_dir = _ROOT / "data/cache"
 
     # Clean slate
     for p in (db_path, Path(f"{db_path}-wal"), Path(f"{db_path}-shm")):

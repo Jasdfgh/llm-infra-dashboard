@@ -35,6 +35,7 @@ except ImportError:
     yaml = None  # type: ignore[assignment]
 
 _PROJ = Path(__file__).resolve().parent.parent
+_ROOT = _PROJ.parent if (_PROJ / "src").exists() and (_PROJ.parent / "data").exists() else _PROJ
 sys.path.insert(0, str(_PROJ))
 
 from mcp.server.fastmcp import FastMCP
@@ -51,10 +52,10 @@ mcp = FastMCP(
     ),
 )
 
-DB_PATH = _PROJ / "data" / "signals.db"
+DB_PATH = _ROOT / "data" / "signals.db"
 SYNC_SCRIPT = _PROJ / "scripts" / "sync_github.py"
 INCR_SCRIPT = _PROJ / "scripts" / "incremental_sync.sh"
-VENV_PYTHON = _PROJ / ".venv" / "bin" / "python"
+VENV_PYTHON = _ROOT / ".venv" / "bin" / "python"
 _SOURCES_YAML = _PROJ / "config" / "sources.yaml"
 _REPO_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _SYNC_LOCK_FILE = "/tmp/signals-sync.lock"
@@ -594,7 +595,7 @@ def trigger_sync(
             return {"status": "locked", "message": "Another sync is running (external lock held)."}
         _release_sync_lock(probe_fd)
 
-        log_path = _PROJ / "data" / f"sync_mcp_{repo.replace('/', '_')}.log"
+        log_path = _ROOT / "data" / f"sync_mcp_{repo.replace('/', '_')}.log"
 
         cmd = [
             "flock", "-n", _SYNC_LOCK_FILE, "--",
@@ -696,7 +697,7 @@ def trigger_sync_all() -> dict:
             "    sys.exit(1)\n"
         )
 
-        log_path = _PROJ / "data" / "sync_mcp_all.log"
+        log_path = _ROOT / "data" / "sync_mcp_all.log"
 
         with open(log_path, "a") as logf:
             _running_proc = subprocess.Popen(

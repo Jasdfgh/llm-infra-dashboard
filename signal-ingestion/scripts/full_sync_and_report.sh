@@ -9,14 +9,15 @@
 
 set -euo pipefail
 
-PROJ="$(cd "$(dirname "$0")/.." && pwd)"
-if [ ! -d "$PROJ/src" ] || [ ! -f "$PROJ/requirements.txt" ]; then
-    echo "ERROR: Invalid project root: $PROJ" >&2
-    exit 1
+WORKSHOP="$(cd "$(dirname "$0")/.." && pwd)"
+if [ -d "$WORKSHOP/src" ] && [ -d "$(dirname "$WORKSHOP")/data" ]; then
+    ROOT="$(dirname "$WORKSHOP")"
+else
+    ROOT="$WORKSHOP"
 fi
-VENV="$PROJ/.venv/bin/python"
-DATA="$PROJ/data"
-REPORT="$PROJ/data/reports/full_sync_report.md"
+VENV="$ROOT/.venv/bin/python"
+DATA="$ROOT/data"
+REPORT="$ROOT/data/reports/full_sync_report.md"
 LOCK_FILE="/tmp/signals-sync.lock"
 
 mkdir -p "$DATA" "$(dirname "$REPORT")"
@@ -59,7 +60,7 @@ echo ""
 repo_output=$("$VENV" -c "
 import yaml, sys
 try:
-    cfg = yaml.safe_load(open('$PROJ/config/sources.yaml'))
+    cfg = yaml.safe_load(open('$WORKSHOP/config/sources.yaml'))
     for r in cfg.get('github', {}).get('repos', []):
         if isinstance(r, dict) and 'repo' in r:
             print(r['repo'])
@@ -103,7 +104,7 @@ for i in "${!REPOS[@]}"; do
 
     REPO_START=$(date +%s)
 
-    if $VENV "$PROJ/scripts/sync_github.py" \
+    if $VENV "$WORKSHOP/scripts/sync_github.py" \
         --repo "$repo" \
         --labels "" \
         --mode full \
@@ -211,7 +212,7 @@ echo "[Benchmark] Running benchmark ($(ts))"
 echo "================================================================"
 BENCH_START=$(date +%s)
 
-$VENV "$PROJ/scripts/benchmark_db.py" --db-path "$DATA/signals.db" --iterations 500 \
+$VENV "$WORKSHOP/scripts/benchmark_db.py" --db-path "$DATA/signals.db" --iterations 500 \
     2>&1 | tee "$DATA/benchmark_full.log"
 
 BENCH_END=$(date +%s)

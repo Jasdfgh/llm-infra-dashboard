@@ -14,8 +14,9 @@ import shutil
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
+_PROJ = Path(__file__).resolve().parent.parent
+_ROOT = _PROJ.parent if (_PROJ / "src").exists() and (_PROJ.parent / "data").exists() else _PROJ
+sys.path.insert(0, str(_PROJ))
 
 from src.ingestion.models import (
     ChangeEvent,
@@ -30,9 +31,9 @@ from src.storage.cache import JSONCache
 from src.storage.database import init_db
 from src.storage.repository import SignalRepository
 
-FIXTURE_DB = ROOT / "data" / "fixtures" / "signals_fixture.db"
-FIXTURE_CACHE = ROOT / "data" / "fixtures" / "cache"
-DEMO_DIR = ROOT / "tests" / "fixtures" / "signals"
+FIXTURE_DB = _ROOT / "data" / "fixtures" / "signals_fixture.db"
+FIXTURE_CACHE = _ROOT / "data" / "fixtures" / "cache"
+DEMO_DIR = _PROJ / "tests" / "fixtures" / "signals"
 SYNC_RUN_ID = "fixture_gen_001"
 SYNCED_AT = "2026-04-22T06:03:00Z"
 ISSUE_SID = "github:vllm-project/vllm:issue:39303"

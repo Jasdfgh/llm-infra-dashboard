@@ -2,7 +2,7 @@
 
 > Last updated: 2026-04-29
 
-一个入口，12 个工具，覆盖 vllm + sglang 共 **~64,000 signals、~238,000 comments**（855 MB 数据库）的查询、同步、管理。
+一个入口，12 个工具，覆盖 vllm + sglang + pytorch 共 **~111,000 signals、~525,000 comments**（1.5 GB 数据库）的查询、同步、管理。
 
 | 类别 | 工具数 | 工具列表 |
 |---|---|---|
@@ -41,7 +41,7 @@
 
 添加后重载编辑器（Cursor: `Ctrl+Shift+P` → `Developer: Reload Window`）即可使用。
 
-> **Tips:** 可用 `bash scripts/signals_status.sh` 查看服务运行状态和实际绑定地址。
+> **Tips:** 可用 `bash workshop/scripts/signals_status.sh` 查看服务运行状态和实际绑定地址。
 
 ---
 
@@ -51,7 +51,7 @@
 
 ### 1. `search_signals`
 
-**用途：** 最常用的工具。在 64,000+ signals 上做全文搜索 + 多维过滤，FTS5 引擎，毫秒级响应。适用于：找某个关键词的 issue/PR、筛选特定仓库的 open issues、按标签交叉过滤等。
+**用途：** 最常用的工具。在 111,000+ signals 上做全文搜索 + 多维过滤，FTS5 引擎，毫秒级响应。适用于：找某个关键词的 issue/PR、筛选特定仓库的 open issues、按标签交叉过滤等。
 
 **参数：**
 
