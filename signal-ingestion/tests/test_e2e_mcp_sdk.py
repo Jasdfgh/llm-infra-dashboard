@@ -40,10 +40,13 @@ def _server_reachable():
         return False
 
 
-pytestmark = pytest.mark.skipif(
-    not _server_reachable(),
-    reason="MCP server not running on localhost:8082",
-)
+pytestmark = [
+    pytest.mark.mcp,
+    pytest.mark.skipif(
+        not _server_reachable(),
+        reason="MCP server not running on localhost:8082",
+    ),
+]
 
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client

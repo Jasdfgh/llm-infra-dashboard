@@ -75,8 +75,25 @@ _NODE_PATH, _NODE_SKIP = _find_node()
 _ENTRY_PATH, _ENTRY_SKIP = _find_dbhub_entry()
 DBHUB_NODE: Path = _NODE_PATH  # type: ignore[assignment]
 DBHUB_ENTRY: Path = _ENTRY_PATH  # type: ignore[assignment]
-DBHUB_TOML = Path(__file__).parent.parent / "dbhub.toml"
-SIGNALS_DB = Path(__file__).parent.parent / "data/signals.db"
+_REPO_ROOT = Path(__file__).parent.parent
+DBHUB_TOML_GENERATED = _REPO_ROOT / "dbhub.toml"
+DBHUB_TOML_EXAMPLE = _REPO_ROOT / "dbhub.toml.example"
+SIGNALS_DB = _REPO_ROOT / "data/signals.db"
+
+@pytest.fixture(scope="module")
+def _dbhub_config(tmp_path_factory):
+    """Return path to a usable dbhub.toml, generating from template if needed."""
+    if DBHUB_TOML_GENERATED.exists():
+        yield str(DBHUB_TOML_GENERATED)
+        return
+    if not DBHUB_TOML_EXAMPLE.exists():
+        pytest.skip("Neither dbhub.toml nor dbhub.toml.example found")
+    content = DBHUB_TOML_EXAMPLE.read_text()
+    content = content.replace("__PROJECT_ROOT__", str(_REPO_ROOT))
+    tmp_dir = tmp_path_factory.mktemp("dbhub")
+    config_path = tmp_dir / "dbhub.toml"
+    config_path.write_text(content)
+    yield str(config_path)
 
 _skip_reason = _NODE_SKIP or _ENTRY_SKIP or ""
 pytestmark = [
@@ -158,7 +175,7 @@ def _mcp_request(base_url: str, method: str, params: dict | None = None):
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="module")
-def dbhub_url():
+def dbhub_url(_dbhub_config):
     """Start dbhub in HTTP mode, yield base URL, kill on teardown."""
     if not DBHUB_NODE.exists():
         pytest.skip(f"Node not found: {DBHUB_NODE}")
@@ -178,7 +195,7 @@ def dbhub_url():
             str(DBHUB_ENTRY),
             "--transport", "http",
             "--port", str(port),
-            "--config", str(DBHUB_TOML),
+            "--config", _dbhub_config,
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

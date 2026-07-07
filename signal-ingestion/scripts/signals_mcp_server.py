@@ -19,6 +19,7 @@ LAN config (internal network, no auth):
 from __future__ import annotations
 
 import argparse
+import contextvars
 import fcntl
 import json
 import logging
@@ -27,6 +28,8 @@ import re
 import sqlite3
 import subprocess
 import sys
+import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 try:
@@ -204,6 +207,129 @@ def _reap_finished_sync() -> None:
         _running_proc = None
 
 
+# ── Audit Logging ────────────────────────────────────────────
+
+_AUDIT_DIR = _ROOT / "data" / "audit"
+_client_ip_var: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "client_ip", default=""
+)
+
+
+def _audit_log_path() -> Path:
+    """Return path for the current ISO-week audit log file."""
+    now = datetime.now(timezone.utc)
+    year, week, _ = now.isocalendar()
+    return _AUDIT_DIR / f"mcp_audit_{year}-W{week:02d}.jsonl"
+
+
+def _truncate_args(tool_name: str, args: dict) -> dict:
+    if not args:
+        return {}
+    truncated = {}
+    for k, v in args.items():
+        if isinstance(v, str):
+            cap = 500 if tool_name == "execute_sql" and k == "sql" else 200
+            truncated[k] = (v[:cap] + "…") if len(v) > cap else v
+        else:
+            truncated[k] = v
+    blob = json.dumps(truncated, default=str, ensure_ascii=False)
+    if len(blob.encode("utf-8")) > 2048:
+        truncated = {"_truncated": True, "_preview": blob[:2000]}
+    return truncated
+
+
+def _result_indicates_error(result) -> bool:
+    """Check if tool result contains an error indicator."""
+    if isinstance(result, dict) and "error" in result:
+        return True
+    if isinstance(result, (list, tuple)):
+        for block in result:
+            if hasattr(block, "text"):
+                try:
+                    parsed = json.loads(block.text)
+                    if isinstance(parsed, dict) and "error" in parsed:
+                        return True
+                except (json.JSONDecodeError, TypeError):
+                    pass
+    return False
+
+
+def _extract_result_summary(result) -> dict:
+    if result is None:
+        return {"type": "null"}
+    if isinstance(result, dict):
+        if "error" in result:
+            return {"error": str(result["error"])[:100]}
+        if "total" in result:
+            s: dict = {"total": result["total"]}
+            for key in ("results", "rows", "signals", "changes"):
+                if key in result and isinstance(result[key], (list, tuple)):
+                    s["returned"] = len(result[key])
+                    break
+            return s
+        for key in ("rows", "results", "signals", "changes"):
+            if key in result and isinstance(result[key], (list, tuple)):
+                return {"count": len(result[key])}
+        return {"type": "dict", "keys": len(result)}
+    if isinstance(result, (list, tuple)):
+        return {"type": "list", "count": len(result)}
+    return {"type": type(result).__name__}
+
+
+def _write_audit_entry(*, tool: str, args: dict, status: str,
+                       elapsed_ms: float, result_summary: dict) -> None:
+    entry = {
+        "ts": datetime.now(timezone.utc)
+              .isoformat(timespec="milliseconds")
+              .replace("+00:00", "Z"),
+        "tool": tool,
+        "args": _truncate_args(tool, args),
+        "client_ip": _client_ip_var.get(),
+        "status": status,
+        "elapsed_ms": round(elapsed_ms, 1),
+        "result_summary": result_summary,
+    }
+    try:
+        _AUDIT_DIR.mkdir(parents=True, exist_ok=True)
+        with open(_audit_log_path(), "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, default=str, ensure_ascii=False) + "\n")
+    except Exception:
+        logger.warning("Failed to write audit log entry", exc_info=True)
+
+
+def _cleanup_old_audit_logs() -> None:
+    """Remove audit log files older than current week + 1 (keep 2 weeks)."""
+    if not _AUDIT_DIR.exists():
+        return
+    now = datetime.now(timezone.utc)
+    cur_year, cur_week, _ = now.isocalendar()
+    keep: set[str] = {f"{cur_year}-W{cur_week:02d}"}
+    if cur_week > 1:
+        keep.add(f"{cur_year}-W{cur_week - 1:02d}")
+    else:
+        prev_year = cur_year - 1
+        last_week = datetime(prev_year, 12, 28, tzinfo=timezone.utc).isocalendar()[1]
+        keep.add(f"{prev_year}-W{last_week:02d}")
+    for p in _AUDIT_DIR.glob("mcp_audit_*.jsonl"):
+        week_tag = p.stem.removeprefix("mcp_audit_")
+        if week_tag not in keep:
+            logger.info("Removing old audit log: %s", p.name)
+            p.unlink(missing_ok=True)
+
+
+class _ClientIPMiddleware:
+    """ASGI middleware — captures client IP into a ContextVar."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            client = scope.get("client")
+            _client_ip_var.set(client[0] if client else "")
+        await self.app(scope, receive, send)
+
+
 # =====================================================================
 #  Query Tools (7)
 # =====================================================================
@@ -222,7 +348,7 @@ def search_signals(
     limit: int = 20,
     offset: int = 0,
 ) -> dict:
-    """Multi-filter search over 63k+ signals (FTS5 + indexed columns).
+    """Multi-filter search over 69k+ signals (FTS5 + indexed columns).
 
     Args:
         query: Full-text search expression (FTS5 syntax: AND/OR/NOT, "phrases", prefix*). Empty = skip FTS, use filters only.
@@ -728,8 +854,14 @@ def trigger_sync_all() -> dict:
 def sync_status() -> dict:
     """Check current sync process status and recent sync history.
 
+    Side effect: sync_run rows stuck in 'running' for over 4 hours are
+    automatically marked as 'failed' (orphan cleanup). This prevents
+    stale records from accumulating when sync processes crash. Before
+    marking a run as stale, the sync lock file is checked — if the lock
+    is still held, the run is assumed to be alive and is skipped.
+
     Returns:
-        {current: {status, pid?}, recent_runs: [...], db: {signals, comments}}
+        {current: {...}, recent_runs: [...], db: {...}, auto_cleaned_stale: int}
     """
     global _running_proc
 
@@ -748,6 +880,52 @@ def sync_status() -> dict:
 
         if DB_PATH.exists():
             conn = _get_repo().connection
+
+            # Auto-clean stale runs (running > 4 hours)
+            stale_cutoff = (datetime.now(timezone.utc) - timedelta(hours=4)).isoformat()
+            stale_rows = conn.execute(
+                "SELECT id, source_repo, started_at FROM sync_runs "
+                "WHERE status = 'running' AND started_at < ?",
+                (stale_cutoff,),
+            ).fetchall()
+
+            # Check if sync lock is currently held before marking as stale
+            lock_held = False
+            try:
+                lock_fd = os.open(_SYNC_LOCK_FILE, os.O_WRONLY | os.O_CREAT, 0o644)
+                try:
+                    fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                except (IOError, OSError):
+                    lock_held = True
+                finally:
+                    os.close(lock_fd)
+            except (IOError, OSError):
+                pass
+
+            auto_cleaned = []
+            for row in stale_rows:
+                if lock_held:
+                    logger.info(
+                        "Skipping stale cleanup for %s — sync lock is held",
+                        row["id"],
+                    )
+                    continue
+                conn.execute(
+                    "UPDATE sync_runs SET status = 'failed', "
+                    "error_message = 'Stale: auto-detected by sync_status', "
+                    "completed_at = datetime('now') WHERE id = ?",
+                    (row["id"],),
+                )
+                logger.warning(
+                    "Auto-cleaned stale sync_run %s (%s, started %s)",
+                    row["id"], row["source_repo"], row["started_at"],
+                )
+                auto_cleaned.append(row["id"])
+            if auto_cleaned:
+                conn.commit()
+                result["auto_cleaned_stale"] = auto_cleaned
+
             runs = conn.execute(
                 "SELECT id, source_repo, status, started_at, completed_at, "
                 "signals_total, signals_created, signals_updated, "
@@ -888,6 +1066,67 @@ def db_maintain(
         return {"error": str(exc)}
 
 
+# ── Audit: intercept all tool calls (Part B) ─────────────────
+# FRAGILE: This patches the private mcp._tool_manager.call_tool method.
+# Verified against mcp SDK v1.27.x. If the SDK upgrades and changes
+# _tool_manager internals, this patch may silently stop working.
+# The test_audit_monkey_patch_installed test will catch breakage.
+
+_audit_patched = False
+_tool_mgr = getattr(mcp, "_tool_manager", None)
+
+if _tool_mgr is not None and hasattr(_tool_mgr, "call_tool"):
+    _orig_call_tool = _tool_mgr.call_tool
+
+    async def _audited_call_tool(name, arguments, *a, **kw):
+        t0 = time.monotonic()
+        status = "success"
+        result_blocks = None
+        error_msg = None
+        try:
+            result_blocks = await _orig_call_tool(name, arguments, *a, **kw)
+            if _result_indicates_error(result_blocks):
+                status = "tool_error"
+            return result_blocks
+        except Exception as exc:
+            status = "error"
+            error_msg = str(exc)[:100]
+            raise
+        finally:
+            elapsed_ms = (time.monotonic() - t0) * 1000
+            try:
+                result_dict = None
+                if result_blocks:
+                    items = (
+                        result_blocks
+                        if isinstance(result_blocks, (list, tuple))
+                        else [result_blocks]
+                    )
+                    for block in items:
+                        text = getattr(block, "text", None)
+                        if text:
+                            try:
+                                result_dict = json.loads(text)
+                            except (json.JSONDecodeError, TypeError):
+                                pass
+                            break
+                summary = _extract_result_summary(result_dict)
+                if error_msg:
+                    summary = {"error": error_msg}
+                _write_audit_entry(
+                    tool=name,
+                    args=arguments or {},
+                    status=status,
+                    elapsed_ms=elapsed_ms,
+                    result_summary=summary,
+                )
+            except Exception:
+                logger.warning("Audit log write failed", exc_info=True)
+
+    _tool_mgr.call_tool = _audited_call_tool
+    _audit_patched = True
+
+
 # =====================================================================
 #  Main
 # =====================================================================
@@ -906,7 +1145,15 @@ def main():
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
+    _cleanup_old_audit_logs()
+
+    if _audit_patched:
+        logger.info("Audit logging active (intercepted _tool_manager.call_tool)")
+    else:
+        logger.warning("Audit logging unavailable (_tool_manager interception failed)")
+
     app = mcp.streamable_http_app()
+    app = _ClientIPMiddleware(app)
 
     logger.info(
         "Starting Signals MCP server on %s:%s (db=%s)",

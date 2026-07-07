@@ -3,11 +3,12 @@
 # Start dbhub as an HTTP MCP server for internal network access.
 #
 # Usage:
-#   bash scripts/start_dbhub_server.sh          # start (default port 8081)
-#   bash scripts/start_dbhub_server.sh stop      # stop
-#   bash scripts/start_dbhub_server.sh status    # check if running
-#   bash scripts/start_dbhub_server.sh restart    # stop + start
-#   PORT=9090 bash scripts/start_dbhub_server.sh  # custom port
+#   bash scripts/start_dbhub_server.sh              # start (default port 8081)
+#   bash scripts/start_dbhub_server.sh stop         # stop
+#   bash scripts/start_dbhub_server.sh status       # check if running
+#   bash scripts/start_dbhub_server.sh restart      # stop + start
+#   bash scripts/start_dbhub_server.sh foreground   # run in foreground (for systemd)
+#   PORT=9090 bash scripts/start_dbhub_server.sh    # custom port
 # =============================================================================
 
 set -euo pipefail
@@ -19,7 +20,25 @@ else
     ROOT="$WORKSHOP"
 fi
 NODE="${NODE:-$(which node 2>/dev/null || echo "node")}"
-DBHUB_ENTRY="${DBHUB_ENTRY:-$(npm root -g 2>/dev/null)/@bytebase/dbhub/dist/index.js}"
+if [ -z "${DBHUB_ENTRY:-}" ]; then
+    case "$NODE" in
+        */bin/node)
+            local_prefix="${NODE%/bin/node}"
+            DBHUB_ENTRY="${local_prefix}/lib/node_modules/@bytebase/dbhub/dist/index.js"
+            ;;
+        *)
+            node_dir="$(dirname "$NODE")"
+            if [ -x "$node_dir/npm" ]; then
+                DBHUB_ENTRY="$("$node_dir/npm" root -g 2>/dev/null)/@bytebase/dbhub/dist/index.js"
+            elif command -v npm >/dev/null 2>&1; then
+                DBHUB_ENTRY="$(npm root -g 2>/dev/null)/@bytebase/dbhub/dist/index.js"
+            else
+                echo "ERROR: Cannot locate dbhub. Set DBHUB_ENTRY=/path/to/dbhub/dist/index.js" >&2
+                exit 1
+            fi
+            ;;
+    esac
+fi
 CONFIG="$WORKSHOP/dbhub.toml"
 PORT="${PORT:-8081}"
 LOGFILE="$ROOT/data/dbhub_server.log"
@@ -40,6 +59,17 @@ _pid() {
     return 1
 }
 
+_check_node_version() {
+    local ver
+    ver=$("$NODE" --version 2>/dev/null | sed 's/^v//')
+    local major="${ver%%.*}"
+    if [ -z "$major" ] || [ "$major" -lt 24 ] 2>/dev/null; then
+        echo "ERROR: Node.js v24+ required, found: ${ver:-not found}" >&2
+        echo "  Set NODE=/path/to/node24 or install via nvm" >&2
+        return 1
+    fi
+}
+
 do_status() {
     local pid
     if pid=$(_pid); then
@@ -53,10 +83,22 @@ do_status() {
         fi
         echo "  log: $LOGFILE"
         return 0
-    else
-        echo "dbhub HTTP not running"
-        return 1
     fi
+
+    if systemctl --user is-active signals-dbhub.service >/dev/null 2>&1; then
+        echo "dbhub HTTP running via systemd (port $PORT)"
+        echo "  endpoint: http://localhost:$PORT/mcp"
+        echo "  log: journalctl --user -u signals-dbhub"
+        return 0
+    fi
+
+    if command -v ss >/dev/null 2>&1 && ss -tlnp 2>/dev/null | grep -q ":${PORT}[[:space:]]"; then
+        echo "dbhub HTTP running on port $PORT (unknown manager)"
+        return 0
+    fi
+
+    echo "dbhub HTTP not running"
+    return 1
 }
 
 do_stop() {
@@ -75,6 +117,41 @@ do_stop() {
     fi
 }
 
+_ensure_config() {
+    local TOML_EXAMPLE="$WORKSHOP/dbhub.toml.example"
+    if [ -f "$TOML_EXAMPLE" ]; then
+        if [ ! -f "$CONFIG" ] || [ "$TOML_EXAMPLE" -nt "$CONFIG" ] || \
+           grep -Fq '__PROJECT_ROOT__' "$CONFIG" 2>/dev/null || \
+           ! grep -Fq "$ROOT" "$CONFIG" 2>/dev/null; then
+            sed "s|__PROJECT_ROOT__|$ROOT|g" "$TOML_EXAMPLE" > "$CONFIG"
+            echo "Generated $CONFIG from template (root=$ROOT)"
+        fi
+    fi
+}
+
+do_foreground() {
+    _ensure_config
+
+    if [ ! -x "$NODE" ] && ! command -v "$NODE" >/dev/null 2>&1; then
+        echo "ERROR: Node.js not found at $NODE" >&2
+        exit 1
+    fi
+    _check_node_version || exit 1
+    if [ ! -f "$DBHUB_ENTRY" ]; then
+        echo "ERROR: dbhub not found at $DBHUB_ENTRY" >&2
+        exit 1
+    fi
+    if [ ! -f "$CONFIG" ]; then
+        echo "ERROR: config not found at $CONFIG" >&2
+        exit 1
+    fi
+
+    echo "Starting dbhub in foreground (port=$PORT, config=$CONFIG)"
+    exec "$NODE" "$DBHUB_ENTRY" \
+        --transport http --port "$PORT" \
+        --config "$CONFIG"
+}
+
 do_start() {
     if _pid >/dev/null 2>&1; then
         echo "dbhub already running (PID $(_pid)). Use 'restart' to restart."
@@ -82,16 +159,13 @@ do_start() {
         return 0
     fi
 
-    if [ ! -f "$NODE" ]; then
-        echo "ERROR: Node.js v24 not found at $NODE" >&2
+    _ensure_config
+
+    if [ ! -x "$NODE" ] && ! command -v "$NODE" >/dev/null 2>&1; then
+        echo "ERROR: Node.js not found at $NODE" >&2
         exit 1
     fi
-    NODE_VERSION=$("$NODE" --version 2>/dev/null | sed 's/v\([0-9]*\).*/\1/')
-    if [ -z "$NODE_VERSION" ] || [ "$NODE_VERSION" -lt 24 ] 2>/dev/null; then
-        echo "ERROR: Node.js >= 24 required (found: $("$NODE" --version 2>/dev/null || echo 'none'))" >&2
-        echo "  Install via nvm: nvm install 24 && nvm use 24" >&2
-        exit 1
-    fi
+    _check_node_version || exit 1
     if [ ! -f "$DBHUB_ENTRY" ]; then
         echo "ERROR: dbhub not found at $DBHUB_ENTRY" >&2
         echo "  Install: $NODE $(dirname $NODE)/npm install -g @bytebase/dbhub@latest" >&2
@@ -132,7 +206,7 @@ do_start() {
             echo "  Local:   http://localhost:$PORT/mcp"
             echo "  Log:     $LOGFILE"
             echo ""
-            echo "  (Listening on localhost only. To expose to LAN, restart with --host 0.0.0.0)"
+            echo "  (Listening on localhost only. dbhub binds 0.0.0.0 by default; check node/dbhub config to restrict.)"
         fi
     else
         echo "ERROR: dbhub failed to start. Check $LOGFILE" >&2
@@ -146,5 +220,6 @@ case "${1:-start}" in
     stop)    do_stop ;;
     status)  do_status ;;
     restart) do_stop; do_start ;;
-    *)       echo "Usage: $0 {start|stop|status|restart}" >&2; exit 1 ;;
+    foreground|--foreground) do_foreground ;;
+    *)       echo "Usage: $0 {start|stop|status|restart|foreground}" >&2; exit 1 ;;
 esac

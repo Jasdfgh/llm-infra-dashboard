@@ -31,31 +31,41 @@ if [ -z "$WEBHOOK_URL" ]; then
     exit 0
 fi
 
-# ── Consecutive failure threshold: only alert after 2+ consecutive failures ──
+# ── Detect service type from unit name ──
+IS_SYNC=false
+case "$UNIT_NAME" in
+    signals-sync.service) IS_SYNC=true ;;
+    *) IS_SYNC=false ;;
+esac
+
 DB="$ROOT/data/signals.db"
-CONSECUTIVE_THRESHOLD=2
 
-if [ -f "$DB" ] && command -v sqlite3 &>/dev/null; then
-    # Count recent consecutive failed/timed-out sync_runs (no successful run in between)
-    RECENT_FAILURES=$(sqlite3 "$DB" "
-        SELECT COUNT(*) FROM (
-            SELECT status FROM sync_runs
-            WHERE status != 'running'
-            ORDER BY started_at DESC
-            LIMIT $CONSECUTIVE_THRESHOLD
-        ) WHERE status != 'completed'
-    " 2>/dev/null || echo "0")
+# ── Consecutive failure threshold: only for sync service (has sync_runs table) ──
+if $IS_SYNC; then
+    CONSECUTIVE_THRESHOLD=2
+    if [ -f "$DB" ] && command -v sqlite3 &>/dev/null; then
+        RECENT_FAILURES=$(sqlite3 "$DB" "
+            SELECT COUNT(*) FROM (
+                SELECT status FROM sync_runs
+                WHERE status != 'running'
+                ORDER BY started_at DESC
+                LIMIT $CONSECUTIVE_THRESHOLD
+            ) WHERE status != 'completed'
+        " 2>/dev/null || echo "0")
 
-    if [ "$RECENT_FAILURES" -lt "$CONSECUTIVE_THRESHOLD" ] 2>/dev/null; then
-        echo "Only $RECENT_FAILURES consecutive failure(s) (threshold=$CONSECUTIVE_THRESHOLD) — suppressing alert."
-        exit 0
+        if [ "$RECENT_FAILURES" -lt "$CONSECUTIVE_THRESHOLD" ] 2>/dev/null; then
+            echo "Only $RECENT_FAILURES consecutive failure(s) (threshold=$CONSECUTIVE_THRESHOLD) — suppressing alert."
+            exit 0
+        fi
     fi
 fi
 
-# Query sync_runs for meaningful summary instead of raw journalctl
+# Build summary depending on service type
 SUMMARY=""
-if [ -f "$DB" ] && command -v sqlite3 &>/dev/null; then
-    # Last successful sync
+FAIL_COUNT="?"
+LAST_OK="N/A"
+
+if $IS_SYNC && [ -f "$DB" ] && command -v sqlite3 &>/dev/null; then
     LAST_OK=$(sqlite3 "$DB" "
         SELECT source_repo || ' (' || completed_at || ')'
         FROM sync_runs
@@ -64,7 +74,6 @@ if [ -f "$DB" ] && command -v sqlite3 &>/dev/null; then
         LIMIT 1
     " 2>/dev/null || echo "unknown")
 
-    # Consecutive failure count
     FAIL_COUNT=$(sqlite3 "$DB" "
         SELECT COUNT(*) FROM (
             SELECT status FROM sync_runs
@@ -74,7 +83,6 @@ if [ -f "$DB" ] && command -v sqlite3 &>/dev/null; then
         ) WHERE status != 'completed'
     " 2>/dev/null || echo "?")
 
-    # Recent failed repos and their errors
     FAILED_REPOS=$(sqlite3 -separator ' | ' "$DB" "
         SELECT source_repo, COALESCE(SUBSTR(error_message, 1, 80), status)
         FROM sync_runs
@@ -85,7 +93,11 @@ if [ -f "$DB" ] && command -v sqlite3 &>/dev/null; then
 
     SUMMARY="Consecutive failures: ${FAIL_COUNT}\nLast success: ${LAST_OK}\nRecent failures:\n${FAILED_REPOS}"
 else
-    SUMMARY="(DB not available for summary)"
+    NRESTARTS=$(systemctl --user show -p NRestarts --value "$UNIT_NAME" 2>/dev/null || echo "?")
+    JOURNAL=$(journalctl --user -u "$UNIT_NAME" -n 10 --no-pager 2>/dev/null | tail -5 || echo "(journal unavailable)")
+    FAIL_COUNT="$NRESTARTS"
+    LAST_OK="(not applicable)"
+    SUMMARY="NRestarts: ${NRESTARTS}\nRecent journal:\n${JOURNAL}"
 fi
 SUMMARY_JSON=$(printf '%s' "$SUMMARY" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()[:2000]))' 2>/dev/null || echo '"(summary encoding failed)"')
 
@@ -102,7 +114,7 @@ PAYLOAD=$(cat <<EOFCARD
       "body": [
         {
           "type": "TextBlock",
-          "text": "⚠️ Sync Failure Alert",
+          "text": "⚠️ Service Failure Alert",
           "weight": "Bolder",
           "size": "Large",
           "color": "Attention"
@@ -118,18 +130,7 @@ PAYLOAD=$(cat <<EOFCARD
         },
         {
           "type": "TextBlock",
-          "text": "Last successful sync:",
-          "weight": "Bolder",
-          "spacing": "Medium"
-        },
-        {
-          "type": "TextBlock",
-          "text": "${LAST_OK}",
-          "wrap": true
-        },
-        {
-          "type": "TextBlock",
-          "text": "Recent failed syncs:",
+          "text": "Details:",
           "weight": "Bolder",
           "spacing": "Medium"
         },

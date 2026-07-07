@@ -1,0 +1,9 @@
+# Template: replace __PROJECT_ROOT__ before deploying.
+# Instantiated by OnFailure= in other services. %i = failed unit name.
+
+[Unit]
+Description=Send Teams alert for failed unit %i
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash __PROJECT_ROOT__/scripts/notify_teams.sh %i

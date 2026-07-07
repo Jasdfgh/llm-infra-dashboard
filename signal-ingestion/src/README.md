@@ -46,7 +46,8 @@ bug、修复进度。
 | 5-6. Dashboard / REST API | Vincent | ❌ 未来通过 REST API 消费 |
 
 **已实现但不在本 src/ 中**：
-- MCP Service（12 tools，见 `scripts/signals_mcp_server.py` + `dbhub.toml`）
+- MCP Service（12 tools，见 `scripts/signals_mcp_server.py` + `dbhub.toml.example`）
+  `dbhub.toml.example` is the template; run `scripts/start_dbhub_server.sh` to generate the local `dbhub.toml`.
 - 定时调度（systemd timer 替代了原计划的 APScheduler）
 
 **Planned**：
@@ -119,7 +120,7 @@ src/
 │       └── github_adapter.py        # httpx 实现，3 种 sync 模式
 │
 ├── storage/                         # Module 3 — 存储层
-│   ├── database.py                  # SQLite DDL（7 表 + FTS5 + triggers）
+│   ├── database.py                  # SQLite DDL（9 表 + FTS5 + triggers）
 │   ├── repository.py                # CRUD + 事务管理（transaction() 公开）
 │   ├── cache.py                     # data/cache/github/.../N.json（原子写）
 │   └── search.py                    # FTS5 + 组合查询 + get_feed() D3.1
@@ -211,7 +212,7 @@ with SignalRepository("data/signals.db") as repo:
         # 你的分类逻辑
         category, gap_ids, confidence = your_classifier(detail)
 
-        # 回写（目前 repository.update_classification 待实现，MVP 结束后加）
+        # 回写（repository.update_classification 已实现）
 ```
 
 **更简单：直接读 JSON 缓存**（零 SQL）：
@@ -242,7 +243,7 @@ for p in Path("data/cache/github/vllm-project_vllm/issues/").glob("*.json"):
 
 ### Module 4 (Agent Workflow)
 
-MCP Service 已上线（`scripts/signals_mcp_server.py` + `dbhub.toml`），提供 12 个工具，包括 D3.2 规划的核心 4 个：`search_signals` / `get_signal_detail` / `get_signal_changes` / `get_gap_signals`，以及 `execute_sql`、`search_objects` 等。配置方式见根目录 `README.md`。
+MCP Service 已上线（`scripts/signals_mcp_server.py` + `dbhub.toml.example`），提供 12 个工具，包括 D3.2 规划的核心 4 个：`search_signals` / `get_signal_detail` / `get_signal_changes` / `get_gap_signals`，以及 `execute_sql`、`search_objects` 等。配置方式见根目录 `README.md`。
 
 Agent 也可使用 `GitHub MCP`（已在 `~/.cursor/mcp.json` 配好，41 工具）做实时代码级查询，或直接读 `data/cache/github/**/*.json` 缓存文件。
 
@@ -360,7 +361,7 @@ async def feed(since: str, classified: bool = False, limit: int = 100):
 
 MCP Service 已上线，提供 12 个工具（含 D3.2 规划的 `search_signals` /
 `get_signal_detail` / `get_signal_changes` / `get_gap_signals`）。
-实现见 `scripts/signals_mcp_server.py` + `dbhub.toml`，配置方式见根目录 `README.md`。
+实现见 `scripts/signals_mcp_server.py` + `dbhub.toml.example`，配置方式见根目录 `README.md`。
 
 ### 定时调度（已实现）
 
@@ -482,16 +483,21 @@ REST API（`/repos/.../issues`）用 `bucket="rest"`（5000/hr），Search API
 # 验证所有测试通过（运行 pytest tests/ -q 查看最新计数）
 ```
 
-单元测试覆盖的 3 个纯函数模块：
-- `reference_extractor` (24 cases)：正则边界、代码块屏蔽、URL 片段误匹配
-- `change_detector` (33 cases)：8 种 ChangeType、content_hash determinism、meaningful threshold
-- `normalizer` (19 cases)：字段映射、issue/PR 区分、bot 识别
+测试覆盖概况：
 
-**没有覆盖的**：
-- `rate_limiter` 的 async 并发行为（手动集成测试过）
-- `GitHubAdapter` 的 HTTP 层（需要 mock httpx 或真实 token）
-- `Repository` 的 DB 层（集成测试跑真实 SQLite）
-- `orchestrator` 的端到端（`scripts/e2e_acceptance.py` 用 mock adapter 跑过）
+| 模块 | 测试文件 | 用例数 | 覆盖要点 |
+|------|----------|--------|----------|
+| `reference_extractor` | `test_reference_extractor.py` | 24 | 正则边界、代码块屏蔽、URL 片段误匹配 |
+| `change_detector` | `test_change_detector.py` | 33 | 8 种 ChangeType、content_hash determinism、meaningful threshold |
+| `normalizer` | `test_normalizer.py` | 19 | 字段映射、issue/PR 区分、bot 识别 |
+| `rate_limiter` | `test_rate_limiter.py` | 26 | async 并发行为、quarantine 逻辑 |
+| `GitHubAdapter` | `test_github_adapter.py` | 30 | 429/retry mock、HTTP 层行为 |
+| `Repository` | `test_repository.py` | 17 | 真实 SQLite CRUD + 事务 |
+| orchestrator E2E | `test_integration.py` | 30 | mock adapter 端到端流程 |
+
+**剩余 gap**：
+- MCP dbhub 集成测试（`test_mcp_dbhub.py`）需要 Node.js v24 + dbhub 运行环境，CI 中默认跳过
+- MCP signals server 的 SSE 长连接行为未覆盖
 
 ---
 

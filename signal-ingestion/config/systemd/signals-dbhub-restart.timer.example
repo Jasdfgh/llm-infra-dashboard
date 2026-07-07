@@ -1,0 +1,13 @@
+# Timer for daily planned restart of signals-dbhub.
+# Use a timer-driven restart instead of RuntimeMaxSec because RuntimeMaxSec
+# exits are reported as timeout failures and trigger OnFailure alerts.
+[Unit]
+Description=Daily planned restart for signals-dbhub
+
+[Timer]
+OnCalendar=*-*-* 04:00:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

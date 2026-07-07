@@ -7,8 +7,9 @@ Uses a real SQLite DB in tmp_path with FTS5 end-to-end.
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -473,3 +474,323 @@ class TestLabelsIntegration:
         assert "error" not in result_amd
         ids_amd = {r["signal_id"] for r in result_amd["results"]}
         assert ids_amd == {"github:sgl-project/sglang:issue:200"}
+
+
+# =====================================================================
+#  G. execute_sql security mechanism tests
+# =====================================================================
+
+
+class TestExecuteSqlSecurity:
+    """execute_sql() — four-layer defense: authorizer, blacklist, read-only, progress."""
+
+    def test_execute_sql_rejects_attach(self, mcp_with_test_db):
+        """ATTACH DATABASE is denied by the authorizer (non-READ/SELECT action)."""
+        result = server.execute_sql(sql="ATTACH DATABASE ':memory:' AS x")
+        assert "error" in result, "ATTACH should be blocked by authorizer"
+
+    def test_execute_sql_rejects_forbidden_pragma(self, mcp_with_test_db):
+        """Non-whitelisted PRAGMAs are denied (e.g. PRAGMA key)."""
+        result = server.execute_sql(sql="PRAGMA key = 'secret'")
+        assert "error" in result, "PRAGMA key is not in _SAFE_PRAGMAS whitelist"
+
+    def test_execute_sql_allows_whitelisted_pragma(self, mcp_with_test_db):
+        """Whitelisted PRAGMAs like table_info work and return column info."""
+        result = server.execute_sql(sql="PRAGMA table_info(signals)")
+        assert "error" not in result, f"table_info should be allowed: {result.get('error')}"
+        assert result["row_count"] > 0, "signals table should have columns"
+        assert len(result["columns"]) > 0
+
+    def test_execute_sql_rejects_blacklisted_function(self, mcp_with_test_db):
+        """Blacklisted functions (randomblob, load_extension) are denied."""
+        result = server.execute_sql(sql="SELECT randomblob(100)")
+        assert "error" in result, "randomblob is in _BLOCKED_FUNCTIONS"
+
+        result2 = server.execute_sql(sql="SELECT load_extension('x')")
+        assert "error" in result2, "load_extension is in _BLOCKED_FUNCTIONS"
+
+    def test_execute_sql_rejects_write_operations(self, mcp_with_test_db):
+        """Write operations are blocked (read-only URI + authorizer)."""
+        result_insert = server.execute_sql(
+            sql="INSERT INTO signals (signal_id, title) VALUES ('x', 'y')"
+        )
+        assert "error" in result_insert, "INSERT should be denied on read-only connection"
+
+        result_drop = server.execute_sql(sql="DROP TABLE signals")
+        assert "error" in result_drop, "DROP TABLE should be denied"
+
+
+# =====================================================================
+#  H. trigger_sync repo whitelist tests
+# =====================================================================
+
+
+class TestTriggerSyncRepoWhitelist:
+    """trigger_sync() — repo validation and whitelist enforcement."""
+
+    def test_trigger_sync_rejects_unknown_repo(self, mcp_with_test_db):
+        """Repo not in sources.yaml is rejected with allowed list shown."""
+        result = server.trigger_sync(repo="unknown-org/unknown-repo")
+        assert "error" in result, "Unknown repo should be rejected"
+        assert "not in the allowed list" in result["error"]
+        assert "Allowed:" in result["error"]
+
+    def test_trigger_sync_rejects_invalid_repo_name(self, mcp_with_test_db):
+        """Path-traversal style repo names are rejected by pattern check."""
+        result = server.trigger_sync(repo="../../../etc/passwd")
+        assert "error" in result, "Path-traversal repo name should be rejected"
+        assert "Invalid repo name" in result["error"]
+
+    def test_trigger_sync_valid_repo_accepted(self, mcp_with_test_db, tmp_path):
+        """Repo from sources.yaml passes validation and starts subprocess."""
+        (tmp_path / "data").mkdir(exist_ok=True)
+        with patch("scripts.signals_mcp_server._ROOT", tmp_path), \
+             patch("scripts.signals_mcp_server.subprocess.Popen") as mock_popen, \
+             patch("scripts.signals_mcp_server._acquire_sync_lock", return_value=99), \
+             patch("scripts.signals_mcp_server._release_sync_lock"):
+            mock_proc = MagicMock(pid=12345)
+            mock_proc.poll.return_value = None
+            mock_popen.return_value = mock_proc
+            result = server.trigger_sync(repo="vllm-project/vllm")
+            assert "error" not in result, f"Valid repo should not error: {result}"
+            assert result["status"] == "started"
+            assert result["pid"] == 12345
+            mock_popen.assert_called_once()
+            cmd = mock_popen.call_args[0][0]
+            assert "sync_github.py" in str(cmd)
+            assert "vllm-project/vllm" in cmd
+
+
+# =====================================================================
+#  I. Audit log tests
+# =====================================================================
+
+
+class TestAuditLog:
+    """Audit logging — write entries and cleanup old files."""
+
+    def test_audit_monkey_patch_installed(self, mcp_with_test_db):
+        """Verify _tool_manager.call_tool points to the audited wrapper."""
+        import scripts.signals_mcp_server as srv
+        mgr = getattr(srv.mcp, "_tool_manager", None)
+        assert mgr is not None, "mcp._tool_manager should exist"
+        assert srv._orig_call_tool is not None, "Original call_tool should be saved"
+        assert mgr.call_tool is not srv._orig_call_tool, \
+            "call_tool should be patched to the audited wrapper"
+        assert mgr.call_tool is srv._audited_call_tool, \
+            "call_tool should point to _audited_call_tool"
+
+    def test_audit_log_written_on_tool_call(self, tmp_path, monkeypatch):
+        """Calling _write_audit_entry creates a JSONL file with correct content."""
+        monkeypatch.setattr(server, "_AUDIT_DIR", tmp_path)
+
+        server._write_audit_entry(
+            tool="execute_sql",
+            args={"sql": "SELECT 1"},
+            status="success",
+            elapsed_ms=12.3,
+            result_summary={"type": "dict", "keys": 3},
+        )
+
+        log_files = list(tmp_path.glob("mcp_audit_*.jsonl"))
+        assert len(log_files) == 1, "Audit log file should be created"
+
+        import json as _json
+        content = log_files[0].read_text().strip()
+        entry = _json.loads(content)
+        assert entry["tool"] == "execute_sql"
+        assert entry["args"]["sql"] == "SELECT 1"
+        assert entry["status"] == "success"
+        assert entry["elapsed_ms"] == 12.3
+
+    def test_audited_call_tool_wrapper_logs_success(self, mcp_with_test_db, tmp_path, monkeypatch):
+        """_audited_call_tool wrapper writes audit log with status='success'."""
+        import asyncio
+        import json as _json
+
+        monkeypatch.setattr(server, "_AUDIT_DIR", tmp_path)
+
+        async def _run():
+            return await server._audited_call_tool("get_stats", {})
+
+        asyncio.new_event_loop().run_until_complete(_run())
+
+        log_files = list(tmp_path.glob("mcp_audit_*.jsonl"))
+        assert len(log_files) == 1, "Audit log should be created by wrapper"
+
+        entry = _json.loads(log_files[0].read_text().strip())
+        assert entry["tool"] == "get_stats"
+        assert entry["status"] == "success"
+
+    def test_audited_call_tool_wrapper_logs_tool_error(self, mcp_with_test_db, tmp_path, monkeypatch):
+        """_audited_call_tool wrapper detects error in result and logs status='tool_error'."""
+        import asyncio
+        import json as _json
+
+        monkeypatch.setattr(server, "_AUDIT_DIR", tmp_path)
+
+        async def _run():
+            return await server._audited_call_tool("execute_sql", {"sql": "DROP TABLE signals"})
+
+        asyncio.new_event_loop().run_until_complete(_run())
+
+        log_files = list(tmp_path.glob("mcp_audit_*.jsonl"))
+        assert len(log_files) == 1
+
+        entry = _json.loads(log_files[0].read_text().strip())
+        assert entry["tool"] == "execute_sql"
+        assert entry["status"] == "tool_error"
+
+    def test_write_audit_entry_direct_success(self, mcp_with_test_db, tmp_path, monkeypatch):
+        """Direct _write_audit_entry records success correctly (unit-level test)."""
+        import json as _json
+
+        monkeypatch.setattr(server, "_AUDIT_DIR", tmp_path)
+
+        result = server.get_stats()
+        assert "error" not in result
+
+        server._write_audit_entry(
+            tool="get_stats",
+            args={},
+            status="success",
+            elapsed_ms=5.0,
+            result_summary=server._extract_result_summary(result),
+        )
+
+        log_files = list(tmp_path.glob("mcp_audit_*.jsonl"))
+        assert len(log_files) == 1
+
+        entry = _json.loads(log_files[0].read_text().strip())
+        assert entry["tool"] == "get_stats"
+        assert entry["status"] == "success"
+        assert "total" in entry["result_summary"]
+
+    def test_write_audit_entry_direct_tool_error(self, mcp_with_test_db, tmp_path, monkeypatch):
+        """Direct _write_audit_entry records tool_error correctly (unit-level test)."""
+        import json as _json
+
+        monkeypatch.setattr(server, "_AUDIT_DIR", tmp_path)
+
+        result = server.execute_sql(sql="DROP TABLE signals")
+        assert "error" in result
+        assert server._result_indicates_error(result) is True
+
+        server._write_audit_entry(
+            tool="execute_sql",
+            args={"sql": "DROP TABLE signals"},
+            status="tool_error",
+            elapsed_ms=2.0,
+            result_summary=server._extract_result_summary(result),
+        )
+
+        log_files = list(tmp_path.glob("mcp_audit_*.jsonl"))
+        assert len(log_files) == 1
+
+        entry = _json.loads(log_files[0].read_text().strip())
+        assert entry["tool"] == "execute_sql"
+        assert entry["status"] == "tool_error"
+        assert "error" in entry["result_summary"]
+
+    def test_audit_log_cleanup_old_files(self, tmp_path, monkeypatch):
+        """_cleanup_old_audit_logs removes files with expired week numbers."""
+        monkeypatch.setattr(server, "_AUDIT_DIR", tmp_path)
+
+        now = datetime.now(timezone.utc)
+        cur_year, cur_week, _ = now.isocalendar()
+
+        current_file = tmp_path / f"mcp_audit_{cur_year}-W{cur_week:02d}.jsonl"
+        current_file.write_text('{"tool":"test"}\n')
+
+        old_week = cur_week - 5 if cur_week > 5 else 1
+        old_file = tmp_path / f"mcp_audit_{cur_year - 1}-W{old_week:02d}.jsonl"
+        old_file.write_text('{"tool":"ancient"}\n')
+
+        server._cleanup_old_audit_logs()
+
+        assert current_file.exists(), "Current week's log should be preserved"
+        assert not old_file.exists(), "Expired audit log should be deleted"
+
+
+# =====================================================================
+#  J. Stale sync_run auto-cleanup tests
+# =====================================================================
+
+
+class TestStaleSyncRunCleanup:
+    """sync_status() auto-cleans stale running sync_runs."""
+
+    def test_sync_status_auto_cleans_stale_runs(self, mcp_with_test_db, tmp_path):
+        """A sync_run running for >4h is auto-marked as failed."""
+        repo, _ = mcp_with_test_db
+        conn = repo.connection
+
+        stale_start = (datetime.now(timezone.utc) - timedelta(hours=5)).isoformat()
+        conn.execute(
+            "INSERT INTO sync_runs (id, source_type, source_repo, sync_mode, status, started_at) "
+            "VALUES (?, 'github', ?, 'incremental', 'running', ?)",
+            ("stale_test_run_001", "test-org/test-repo", stale_start),
+        )
+        conn.commit()
+
+        lock_file = tmp_path / "test-sync.lock"
+        lock_file.touch()
+        with patch("scripts.signals_mcp_server._SYNC_LOCK_FILE", str(lock_file)):
+            result = server.sync_status()
+
+        assert "error" not in result
+        assert "auto_cleaned_stale" in result
+        assert "stale_test_run_001" in result["auto_cleaned_stale"]
+
+        row = conn.execute(
+            "SELECT status, error_message FROM sync_runs WHERE id = ?",
+            ("stale_test_run_001",),
+        ).fetchone()
+        assert row["status"] == "failed"
+        assert "Stale: auto-detected by sync_status" in row["error_message"]
+
+    def test_sync_status_preserves_stale_when_lock_held(self, mcp_with_test_db, tmp_path):
+        """Stale run is NOT cleaned when the sync lock is held, then cleaned after release."""
+        import fcntl
+
+        repo, _ = mcp_with_test_db
+        conn = repo.connection
+
+        lock_file = tmp_path / "test-sync.lock"
+        lock_file.touch()
+
+        stale_start = (datetime.now(timezone.utc) - timedelta(hours=5)).isoformat()
+        conn.execute(
+            "INSERT INTO sync_runs (id, source_type, source_repo, sync_mode, status, started_at) "
+            "VALUES (?, 'github', ?, 'incremental', 'running', ?)",
+            ("stale_lock_test_001", "test-org/test-repo", stale_start),
+        )
+        conn.commit()
+
+        with patch("scripts.signals_mcp_server._SYNC_LOCK_FILE", str(lock_file)):
+            fd = open(str(lock_file), "w")
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX)
+
+                result = server.sync_status()
+                assert "error" not in result
+                row = conn.execute(
+                    "SELECT status FROM sync_runs WHERE id = ?",
+                    ("stale_lock_test_001",),
+                ).fetchone()
+                assert row["status"] == "running", \
+                    "Stale row should NOT be cleaned while lock is held"
+            finally:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+                fd.close()
+
+            result2 = server.sync_status()
+            assert "error" not in result2
+            assert "auto_cleaned_stale" in result2
+            assert "stale_lock_test_001" in result2["auto_cleaned_stale"]
+            row2 = conn.execute(
+                "SELECT status, error_message FROM sync_runs WHERE id = ?",
+                ("stale_lock_test_001",),
+            ).fetchone()
+            assert row2["status"] == "failed"
+            assert "Stale" in row2["error_message"]

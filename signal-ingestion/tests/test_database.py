@@ -324,6 +324,36 @@ class TestSignalStatsTrigger:
         assert _get_stats_cnt(conn, "org/repo", "") == 1
         conn.close()
 
+    def test_update_changes_stats(self, tmp_path: Path) -> None:
+        """UPDATE repo/state -> old bucket decremented, new bucket incremented across dimensions."""
+        db = tmp_path / "test.db"
+        init_db(db)
+        conn = get_connection(db)
+
+        # Step 1: insert signal (repo=A, state=open, type=github_issue)
+        _insert_signal_with_state(conn, "sig1", "github_issue", "org/repoA", "open")
+        assert _get_stats_cnt(conn, "org/repoA", "open") == 1
+
+        # Step 2: update state open -> closed
+        conn.execute(
+            "UPDATE signals SET github_state = ? WHERE signal_id = ?",
+            ("closed", "sig1"),
+        )
+        conn.commit()
+        assert _get_stats_cnt(conn, "org/repoA", "open") == 0
+        assert _get_stats_cnt(conn, "org/repoA", "closed") == 1
+
+        # Step 3: update repo A -> B (state remains closed)
+        conn.execute(
+            "UPDATE signals SET source_repo = ? WHERE signal_id = ?",
+            ("org/repoB", "sig1"),
+        )
+        conn.commit()
+        assert _get_stats_cnt(conn, "org/repoA", "closed") == 0
+        assert _get_stats_cnt(conn, "org/repoB", "closed") == 1
+
+        conn.close()
+
     def test_backfill_populates_stats(self, tmp_path: Path) -> None:
         """Backfill: insert raw rows without triggers, then init_db populates stats."""
         db = tmp_path / "test.db"

@@ -1,0 +1,25 @@
+# Template: replace __PROJECT_ROOT__ with your actual project path before deploying.
+# See config/systemd/README.md for deployment instructions.
+
+[Unit]
+Description=signals.db MCP service (query + sync + management)
+After=network.target
+OnFailure=signals-alert@%n.service
+StartLimitBurst=5
+StartLimitIntervalSec=300
+
+[Service]
+Type=simple
+WorkingDirectory=__PROJECT_ROOT__
+ExecStart=__PROJECT_ROOT__/.venv/bin/python __PROJECT_ROOT__/scripts/signals_mcp_server.py --host 0.0.0.0 --port 8082
+Restart=always
+RestartSec=5
+MemoryHigh=512M
+MemoryMax=1G
+CPUQuota=50%
+
+StandardOutput=append:__PROJECT_ROOT__/data/signals_mcp_server.log
+StandardError=append:__PROJECT_ROOT__/data/signals_mcp_server.log
+
+[Install]
+WantedBy=default.target

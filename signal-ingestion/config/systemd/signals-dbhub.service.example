@@ -1,0 +1,35 @@
+# Template: replace __PROJECT_ROOT__ and __NODE_PREFIX__ before deploying.
+#   __PROJECT_ROOT__ = project directory (e.g. /home/user/my-llm-infra-dashboard)
+#   __NODE_PREFIX__  = Node.js v24 install prefix (e.g. /home/user/.nvm/versions/node/v24.14.0)
+# See config/systemd/README.md for deployment instructions.
+# dbhub is started via start_dbhub_server.sh, which auto-generates
+# dbhub.toml from dbhub.toml.example (no manual toml setup needed).
+#
+# Daily restart is handled by signals-dbhub-restart.timer (see README.md),
+# NOT by RuntimeMaxSec, to avoid false OnFailure alerts.
+
+[Unit]
+Description=signals.db MCP HTTP server (dbhub)
+After=network.target
+OnFailure=signals-alert@%n.service
+StartLimitBurst=5
+StartLimitIntervalSec=300
+
+[Service]
+Type=simple
+WorkingDirectory=__PROJECT_ROOT__
+Environment=NODE=__NODE_PREFIX__/bin/node
+Environment=DBHUB_ENTRY=__NODE_PREFIX__/lib/node_modules/@bytebase/dbhub/dist/index.js
+Environment=NODE_ENV=production
+ExecStart=/bin/bash __PROJECT_ROOT__/scripts/start_dbhub_server.sh foreground
+Restart=always
+RestartSec=5
+MemoryHigh=512M
+MemoryMax=1G
+CPUQuota=50%
+
+StandardOutput=append:__PROJECT_ROOT__/data/dbhub_server.log
+StandardError=append:__PROJECT_ROOT__/data/dbhub_server.log
+
+[Install]
+WantedBy=default.target

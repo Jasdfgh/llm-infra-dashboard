@@ -1,0 +1,13 @@
+# Template: replace __PROJECT_ROOT__ before deploying.
+[Unit]
+Description=signals.db incremental GitHub sync
+After=network.target
+OnFailure=signals-alert@%n.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=__PROJECT_ROOT__
+ExecStart=/bin/bash __PROJECT_ROOT__/scripts/incremental_sync.sh
+StandardOutput=append:__PROJECT_ROOT__/data/sync_incremental.log
+StandardError=append:__PROJECT_ROOT__/data/sync_incremental.log
+TimeoutStartSec=7200

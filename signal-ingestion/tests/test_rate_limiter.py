@@ -451,3 +451,71 @@ async def test_non_pool_mode_still_sleeps_rest() -> None:
     with patch("src.ingestion.rate_limiter.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
         await rl.acquire("rest")
         mock_sleep.assert_called_once()
+
+
+# ── 27. TokenPool: quarantine on repeated failures ────────────────────
+
+
+def test_token_pool_quarantine_on_repeated_failures() -> None:
+    """mark_token_unauthorized must quarantine the token, excluding it from selection.
+
+    When GitHub repeatedly returns 401 for a token, the adapter calls
+    mark_token_unauthorized.  The quarantined token must be skipped by
+    get_best_token while other pool members remain available.
+    """
+    pool = TokenPool([
+        {"token": "ghp_aaa", "label": "a"},
+        {"token": "ghp_bbb", "label": "b"},
+        {"token": "ghp_ccc", "label": "c"},
+    ])
+
+    pool.mark_token_unauthorized("ghp_bbb")
+    pool.mark_token_unauthorized("ghp_bbb")
+
+    assert pool.get_best_token() in ("ghp_aaa", "ghp_ccc")
+
+    assert pool._states["b"]._quarantined is True
+    assert pool._states["b"].remaining == 0
+
+    assert pool._states["a"]._quarantined is False
+    assert pool._states["c"]._quarantined is False
+
+
+# ── 28. TokenPool: quarantine recovery after cooldown ─────────────────
+
+
+def test_token_pool_quarantine_recovery_after_cooldown() -> None:
+    """Quarantined App tokens recover once mint cooldown elapses and refresh succeeds.
+
+    After quarantine + a failed refresh, the pool respects the 5-minute
+    mint cooldown.  Once the cooldown has elapsed and a subsequent mint
+    succeeds, the token must be restored to the available set.
+    """
+    call_count = {"n": 0}
+
+    def _mint_sequence(app_id, private_key, installation_id):
+        call_count["n"] += 1
+        if call_count["n"] == 2:
+            raise RuntimeError("Simulated mint failure")
+        return f"ghs_v{call_count['n']}", time.time() + 3600
+
+    with patch(_MINT_PATCH, side_effect=_mint_sequence):
+        pool = TokenPool([_APP_ENTRY.copy()])
+        token = pool.get_best_token()  # mint #1 succeeds
+        assert token == "ghs_v1"
+
+        pool.mark_token_unauthorized(token)
+
+        # Refresh attempted → mint #2 fails → still quarantined
+        assert pool.get_best_token() is None
+
+        # Cooldown has not elapsed → refresh skipped → still None
+        assert pool.get_best_token() is None
+
+        # Fast-forward past _MINT_COOLDOWN_SECS (300 s)
+        pool._states["app_1"]._last_mint_attempt -= 301
+
+        # Refresh retried → mint #3 succeeds → quarantine lifted
+        recovered = pool.get_best_token()
+        assert recovered == "ghs_v3"
+        assert pool._states["app_1"]._quarantined is False

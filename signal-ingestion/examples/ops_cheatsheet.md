@@ -6,7 +6,7 @@ Copy-paste the commands you need. All commands assume you are in the project roo
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-echo "GITHUB_PERSONAL_ACCESS_TOKEN=ghp_xxxxx" > .env
+echo "GITHUB_PERSONAL_ACCESS_TOKEN=ghp_xxxxx" >> .env
 .venv/bin/python scripts/init_db.py
 ```
 
@@ -52,7 +52,6 @@ echo "GITHUB_PERSONAL_ACCESS_TOKEN=ghp_xxxxx" > .env
 
 Currently automated via systemd user timers; no crontab needed:
 - `signals-sync.timer` — incremental sync every 2h (calls `incremental_sync.sh`)
-- `signals-logrotate.timer` — daily log rotation
 
 ```bash
 # Check status

@@ -159,7 +159,7 @@ github:
 
 # Normalizer config
 normalizer:
-  # Body truncation (0 = no truncation) — MVP keeps full body per D2.1 ("完整 body，不截断")
+  # Body truncation (0 = no truncation) — MVP keeps full body per D2.1 ("full body, not truncated")
   body_max_chars: 0
   comment_body_max_chars: 0
 

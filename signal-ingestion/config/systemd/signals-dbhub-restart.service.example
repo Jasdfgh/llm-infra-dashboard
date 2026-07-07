@@ -1,0 +1,8 @@
+# Oneshot service triggered by signals-dbhub-restart.timer.
+# Gracefully restarts signals-dbhub without triggering OnFailure alerts.
+[Unit]
+Description=Planned restart of signals-dbhub
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl --user restart signals-dbhub

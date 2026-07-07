@@ -5,6 +5,10 @@ python-dotenv>=1.0.0
 PyYAML>=6.0.0
 PyJWT[crypto]>=2.8.0
 
+# MCP service runtime
+mcp>=1.27.0
+uvicorn>=0.46.0
+
 # Optional - future async SQLite support (not required for MVP)
 # aiosqlite>=0.20.0
 

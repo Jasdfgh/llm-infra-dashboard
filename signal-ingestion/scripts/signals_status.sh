@@ -25,7 +25,12 @@ echo "────────────────────────�
 printf "  %-30s" "dbhub MCP HTTP:"
 if systemctl --user is-active signals-dbhub.service >/dev/null 2>&1; then
     uptime=$(systemctl --user show signals-dbhub.service -p ActiveEnterTimestamp --value) || true
-    echo "RUNNING (since $uptime)"
+    nrestarts_dbhub=$(systemctl --user show signals-dbhub.service -p NRestarts --value 2>/dev/null) || nrestarts_dbhub="?"
+    if [ "$nrestarts_dbhub" != "?" ] && [ "$nrestarts_dbhub" -gt 0 ] 2>/dev/null; then
+        echo "RUNNING (since $uptime) ⚠ NRestarts=$nrestarts_dbhub"
+    else
+        echo "RUNNING (since $uptime)"
+    fi
 else
     echo "STOPPED"
 fi
@@ -33,7 +38,12 @@ fi
 printf "  %-30s" "MCP Service (query+sync):"
 if systemctl --user is-active signals-sync-mcp.service >/dev/null 2>&1; then
     uptime2=$(systemctl --user show signals-sync-mcp.service -p ActiveEnterTimestamp --value) || true
-    echo "RUNNING (since $uptime2)"
+    nrestarts_mcp=$(systemctl --user show signals-sync-mcp.service -p NRestarts --value 2>/dev/null) || nrestarts_mcp="?"
+    if [ "$nrestarts_mcp" != "?" ] && [ "$nrestarts_mcp" -gt 0 ] 2>/dev/null; then
+        echo "RUNNING (since $uptime2) ⚠ NRestarts=$nrestarts_mcp"
+    else
+        echo "RUNNING (since $uptime2)"
+    fi
 else
     echo "STOPPED"
 fi
@@ -42,13 +52,6 @@ printf "  %-30s" "Sync timer (every 2h):"
 if systemctl --user is-active signals-sync.timer >/dev/null 2>&1; then
     next=$(systemctl --user list-timers signals-sync.timer --no-legend 2>/dev/null | awk '{print $1, $2, $3}') || true
     echo "ACTIVE (next: $next)"
-else
-    echo "INACTIVE"
-fi
-
-printf "  %-30s" "Log rotation (daily):"
-if systemctl --user is-active signals-logrotate.timer >/dev/null 2>&1; then
-    echo "ACTIVE"
 else
     echo "INACTIVE"
 fi
@@ -135,12 +138,14 @@ fi
 echo ""
 echo "TOKEN POOL"
 echo "───────────────────────────────────────────────────────────────"
-pat_count=$(grep -c "^GITHUB_TOKENS" "$ROOT/secrets/.env" 2>/dev/null || true)
-app_count=$(grep -c "^GITHUB_APP_.*_ID=" "$ROOT/secrets/.env" 2>/dev/null || true)
+ENV_FILE="$ROOT/secrets/.env"
+[ -f "$ENV_FILE" ] || ENV_FILE="$ROOT/.env"
+pat_count=$(grep -c "^GITHUB_TOKENS" "$ENV_FILE" 2>/dev/null || true)
+app_count=$(grep -c "^GITHUB_APP_.*_ID=" "$ENV_FILE" 2>/dev/null || true)
 pat_count=${pat_count:-0}
 app_count=${app_count:-0}
-if [ -f "$ROOT/secrets/.env" ]; then
-    pats=$(grep "^GITHUB_TOKENS" "$ROOT/secrets/.env" 2>/dev/null | tr ',' '\n' | wc -l) || true
+if [ -f "$ENV_FILE" ]; then
+    pats=$(grep "^GITHUB_TOKENS" "$ENV_FILE" 2>/dev/null | tr ',' '\n' | wc -l) || true
     echo "  PATs:          $pats"
     echo "  GitHub Apps:   $app_count"
     echo "  Total tokens:  $((pats + app_count))"

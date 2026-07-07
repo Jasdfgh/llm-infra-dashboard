@@ -1,0 +1,11 @@
+# Template: no placeholders needed for timer.
+[Unit]
+Description=Run signals sync every 2 hours
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=2h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
